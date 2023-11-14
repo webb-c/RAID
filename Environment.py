@@ -177,7 +177,7 @@ class Env():
         self.episode += 1
         self.target_image = np.array(origin_image_tensor)
         self.target_label = image_label
-        self.state = (np.array(perturbed_image_tensor), np.array(confidence_score))
+        self.state = (np.array(perturbed_image_tensor), np.array(feature_map))
 
         self.prev_confidence_score = confidence_score
         
