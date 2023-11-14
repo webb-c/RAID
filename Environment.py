@@ -1,21 +1,28 @@
-import argparse
 import torch
 import glob
 import numpy as np
 from torchvision.transforms import transforms
 from PIL import Image
-from typing import Union, Generator, Tuple
+from typing import Union, Tuple
+from utils import register_single_hook, return_feature_map, load_model, hook_fn
 
 
 
 class Env():
-    def __init__(self, model_name: str = "mobilenet", mode: str = "train", feature_extract_layer: int = 4) -> None:
+    def __init__(self, 
+                 model_name: str = "mobilenet", 
+                 mode: str = "train", 
+                 feature_extract_layer: int = 4, 
+                 alpha: float = 0.5
+                 ) -> None:
         self.state: Tuple[np.ndarray, np.ndarray] = None # current state (image, featuremap)
         self.target_label: int = None
-        self.episode: int = None # current episode (integer)
-        self.prev_confidence_score: float = None
-
-        self.image_model: torch.nn.Module = None
+        self.target_image: np.ndarray = None
+        self.episode: int = 0 # current episode (integer)
+        self.prev_confidence_score: np.ndarray = None
+        self.alpha: float = alpha
+        self.size: int = 32
+        self.epoch: int = 1
 
         self.model_name: str = model_name
 
@@ -32,6 +39,9 @@ class Env():
 
         self.mode = mode
         self.feature_extract_layer = feature_extract_layer
+
+        self.image_model: torch.nn.Module = self._load_model()
+        self._load_dataset()
 
     # return permutation list
     def _make_permutation_list(self, n) -> np.ndarray:
@@ -57,8 +67,8 @@ class Env():
 
         self._make_permutation_list(n = data_num)
         
-        origin_images = (self._return_transform_image(path) for path in origin_images_paths)
-        perturbed_images = (self._return_transform_image(path) for path in perturbed_images_paths)
+        origin_images = (self._return_transform_image(origin_images_paths[index]) for index in self.permutation_list)
+        perturbed_images = (self._return_transform_image(perturbed_images_paths[index]) for index in self.permutation_list)
 
         if self.mode == "train":
             self.train_dataset = {"origin_images" : origin_images, "perturbed_images" : perturbed_images}
@@ -73,6 +83,13 @@ class Env():
     def _return_transform_image(self, image_path: str) -> torch.Tensor:
         with Image.open(image_path) as img:
             return self.transform(img)
+        
+    def _load_model(self) -> torch.nn.Module:
+        model_path = f"models/{self.model_name}.pt"
+        image_model = load_model(self.model_name, model_path)
+        register_single_hook(image_model, self.feature_extract_layer, hook_fn)
+
+        return image_model
     
     
     def _get_next_image_label(self) -> Union[Tuple[torch.Tensor, torch.Tensor, int], int]:
@@ -85,37 +102,34 @@ class Env():
         output:
             (origin_image_tensor, perturbed_image_tensor, image_label)
         """
-        try:
-            if self.mode == "train":
-                dataset = self.train_dataset
-
-            elif self.mode == "val":
-                dataset = self.val_dataset
-
-            elif self.mode == "test":
-                dataset = self.test_dataset
-                
-            origin_images = dataset["origin_images"]
-            perturbed_images = dataset["perturbed_images"]
-
-            origin_image_path = next(origin_images, None)
-            perturbed_image_path = next(perturbed_images, None)
-
-            if origin_image_path is None and perturbed_image_path is None:
-                return -1
-            
-            origin_image_tensor: torch.Tensor = self.transform(origin_image_path)
-            perturbed_image_tensor: torch.Tensor = self.transform(perturbed_image_path)
-
-            image_label: int = int(perturbed_image_path.split("_")[1])
-
-            if image_label != int(origin_image_path.split("_")[1]):
-                raise ValueError("The original class of the original image and the perturbed image is different.")
-
-            return (origin_image_tensor, perturbed_image_tensor, image_label)
         
-        except Exception as e:
-            raise e
+        if self.mode == "train":
+            dataset = self.train_dataset
+
+        elif self.mode == "val":
+            dataset = self.val_dataset
+
+        elif self.mode == "test":
+            dataset = self.test_dataset
+            
+        origin_images = dataset["origin_images"]
+        perturbed_images = dataset["perturbed_images"]
+
+        origin_image_path = next(origin_images, None)
+        perturbed_image_path = next(perturbed_images, None)
+
+        if origin_image_path is None and perturbed_image_path is None:
+            return -1
+        
+        origin_image_tensor: torch.Tensor = self.transform(origin_image_path)
+        perturbed_image_tensor: torch.Tensor = self.transform(perturbed_image_path)
+
+        image_label: int = int(perturbed_image_path.split("_")[1])
+
+        if image_label != int(origin_image_path.split("_")[1]):
+            raise ValueError("The original class of the original image and the perturbed image is different.")
+
+        return (origin_image_tensor, perturbed_image_tensor, image_label)
         
     
 
@@ -128,7 +142,15 @@ class Env():
         output:
             (confidence score, feature map)
         """
-        self.image_model(image)
+        with torch.no_grad():
+            logit = self.image_model(image)
+
+        prob = torch.nn.functional.softmax(logit, dim=0)
+        confidence_score = np.array(prob)
+
+        feature_map = np.array(return_feature_map(self.image_model))
+
+        return (confidence_score, feature_map)
 
     def _defense_image(self, channel: int, index: int, std: float) -> None:
         """
@@ -180,7 +202,7 @@ class Env():
             self._load_dataset()
         
 
-    def reset(self) -> Tuple[np.ndarray, np.ndarray]:
+    def reset(self) -> Tuple[Tuple[np.ndarray, np.ndarray], int]:
         """
         reset 함수는 state, episode, prev_confidence_score, dataset을 초기화 하고, state를 반환합니다.
         self.mode에 따라 state가 불러와지는 dataset이 달라집니다.
@@ -190,9 +212,25 @@ class Env():
         output:
             (image: np.ndarray, feature_map: np.ndarray)
         """
-        self._load_dataset()
-        origin_image_tensor, perturbed_image_tensor, image_label = self._get_next_image_label()
-        pass
+        next = self._get_next_image_label()
+
+        if next == -1:
+            self.epoch += 1
+            self._load_dataset()
+            origin_image_tensor, perturbed_image_tensor, image_label = self._get_next_image_label()
+        else:
+            origin_image_tensor, perturbed_image_tensor, image_label = next
+
+        confidence_score, feature_map = self._inference(perturbed_image_tensor)
+
+        self.episode += 1
+        self.target_image = np.array(origin_image_tensor)
+        self.target_label = image_label
+        self.state = (np.array(perturbed_image_tensor), np.array(feature_map))
+
+        self.prev_confidence_score = confidence_score
+        
+        return (self.state, self.epoch)
 
     def step(self, action: Tuple[np.ndarray, np.ndarray]) -> Tuple[Tuple[np.ndarray, np.ndarray], float, bool, bool, None]:
         """
@@ -229,3 +267,4 @@ class Env():
         self.prev_confidence_score = confidence_score
 
         return state, reward, terminated, truncated, None
+
