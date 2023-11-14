@@ -14,30 +14,37 @@ class Agent(nn.Module):
         self.lr = config["learning_rate"]
         self.gamma = config["gamma"]
         self.eps_clip = config["eps_clip"]
-        self.layer_num = config["layer_num"]
+        self.layer_idx = config["layer_idx"]
         self.mode = config["mode"]
         self.rollout_len = config["rollout_len"]
-        self.self.buffer_size = config["self.buffer_size"]
+        self.buffer_size = config["buffer_size"]
         self.minibatch_size = config["minibatch_size"]
-        self.action_number = 2  # std & index
+        self.alpha = config["alpha"]
+        self.model_name = config["model_name"]
+        # self.lmbda = config["lmbda"]
+        self.action_dim = 7
         
         # PPO DNN model
-        self.backbone = self.load_model("mobilenet")
+        self.backbone = self.load_model(self.model_name)
         self.backbone = nn.Sequential(*list(self.backbone.children())[:-1])
-        self.policy = nn.Sequential(
-            nn.Linear(1280, 500),
+        layers = list(self.backbone.children())
+        self.backbone_part1 = nn.Sequential(*layers[:self.layer_idx+1])
+        self.backbone_part2 = nn.Sequential(*layers[self.layer_idx+1:])
+        self.shared_layer = nn.Sequential(
+            nn.Linear(1280, 640),
             nn.ReLU(),
-            nn.Linear(500, self.action_number)
+            nn.Linear(640, 128),
+            nn.ReLU()
         )
-        
-        self.fc1   = nn.Linear(3,128)
-        self.fc_mu = nn.Linear(128,1)
-        self.fc_std  = nn.Linear(128,1)
-        self.fc_v = nn.Linear(128,1)
+        self.index = nn.Linear(128, 2)
+        self.std = nn.Linear(128, 2)
+        self.channel = nn.Linear(128, 3)
+        self.critic = nn.Linear(128, 1)
         
         self.optimizer = optim.Adam(self.parameters(), lr=self.lr)
         self.optimization_step = 0
 
+    
     def _load_model(model_name, path=None): 
         # in utils.py
         if model_name == 'mobilenet':
@@ -49,29 +56,32 @@ class Agent(nn.Module):
                 model.load_state_dict(torch.load(path))
         return model
     
-    def _backbone():
-        """"""
+    def _backbone(self, image, feature):
+        mid_feature = self.backbone_part1(image)
+        agent_feature = self.model_part2(mid_feature + feature)
+        return agent_feature
         
-    def _policy():
-        """"""
+    def _policy(self, agent_feature):
+        x = self.policy(agent_feature)
+        pi = self.actor(x)
+        state_v = self.critic(x)
+        return pi
         
     def get_action(self, image, feature):
         agent_feature = self._backbone(image, feature)
-        prob = self._polciy(agent_feature)
-        
+        prob = self._policy(agent_feature)
         return np.argmax(prob)
         
+    # def _pi(self, x, softmax_dim = 0):
+    #     x = F.relu(self.fc1(x))
+    #     mu = 2.0*torch.tanh(self.fc_mu(x))
+    #     std = F.softplus(self.fc_std(x))
+    #     return mu, std
     
-    def _pi(self, x, softmax_dim = 0):
-        x = F.relu(self.fc1(x))
-        mu = 2.0*torch.tanh(self.fc_mu(x))
-        std = F.softplus(self.fc_std(x))
-        return mu, std
-    
-    def _v(self, x):
-        x = F.relu(self.fc1(x))
-        v = self.fc_v(x)
-        return v
+    # def _v(self, x):
+    #     x = F.relu(self.fc1(x))
+    #     v = self.fc_v(x)
+    #     return v
       
     def _put_data(self, transition):
         self.data.append(transition)
