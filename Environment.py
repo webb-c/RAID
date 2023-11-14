@@ -1,21 +1,28 @@
-import argparse
 import torch
 import glob
 import numpy as np
 from torchvision.transforms import transforms
 from PIL import Image
-from typing import Union, Generator, Tuple
+from typing import Union, Tuple
 from utils import register_single_hook, return_feature_map, load_model, hook_fn
 
 
 
 class Env():
-    def __init__(self, model_name: str = "mobilenet", mode: str = "train", feature_extract_layer: int = 4) -> None:
+    def __init__(self, 
+                 model_name: str = "mobilenet", 
+                 mode: str = "train", 
+                 feature_extract_layer: int = 4, 
+                 alpha: float = 0.5
+                 ) -> None:
         self.state: Tuple[np.ndarray, np.ndarray] = None # current state (image, featuremap)
         self.target_label: int = None
         self.target_image: np.ndarray = None
-        self.episode: int = None # current episode (integer)
-        self.prev_confidence_score: float = None
+        self.episode: int = 0 # current episode (integer)
+        self.prev_confidence_score: np.ndarray = None
+        self.alpha: float = alpha
+        self.size: int = 32
+        self.epoch: int = 1
 
         self.model_name: str = model_name
 
@@ -60,8 +67,8 @@ class Env():
 
         self._make_permutation_list(n = data_num)
         
-        origin_images = (self._return_transform_image(path) for path in origin_images_paths)
-        perturbed_images = (self._return_transform_image(path) for path in perturbed_images_paths)
+        origin_images = (self._return_transform_image(origin_images_paths[index]) for index in self.permutation_list)
+        perturbed_images = (self._return_transform_image(perturbed_images_paths[index]) for index in self.permutation_list)
 
         if self.mode == "train":
             self.train_dataset = {"origin_images" : origin_images, "perturbed_images" : perturbed_images}
@@ -136,7 +143,11 @@ class Env():
             (confidence score, feature map)
         """
         with torch.no_grad():
-            confidence_score = np.array(torch.nn.functional.softmax(self.image_model(image), dim=0))
+            logit = self.image_model(image)
+
+        prob = torch.nn.functional.softmax(logit, dim=0)
+        confidence_score = np.array(prob)
+
         feature_map = np.array(return_feature_map(self.image_model))
 
         return (confidence_score, feature_map)
@@ -161,7 +172,7 @@ class Env():
             self._load_dataset()
         
 
-    def reset(self) -> Tuple[np.ndarray, np.ndarray]:
+    def reset(self) -> Tuple[Tuple[np.ndarray, np.ndarray], int]:
         """
         reset 함수는 state, episode, prev_confidence_score, dataset을 초기화 하고, state를 반환합니다.
         self.mode에 따라 state가 불러와지는 dataset이 달라집니다.
@@ -171,8 +182,16 @@ class Env():
         output:
             (image: np.ndarray, feature_map: np.ndarray)
         """
-        origin_image_tensor, perturbed_image_tensor, image_label = self._get_next_image_label()
-        confidence_score, feature_map = self._inference()
+        next = self._get_next_image_label()
+
+        if next == -1:
+            self.epoch += 1
+            self._load_dataset()
+            origin_image_tensor, perturbed_image_tensor, image_label = self._get_next_image_label()
+        else:
+            origin_image_tensor, perturbed_image_tensor, image_label = next
+
+        confidence_score, feature_map = self._inference(perturbed_image_tensor)
 
         self.episode += 1
         self.target_image = np.array(origin_image_tensor)
@@ -181,4 +200,4 @@ class Env():
 
         self.prev_confidence_score = confidence_score
         
-        return self.state
+        return (self.state, self.epoch)
