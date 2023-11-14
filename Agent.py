@@ -36,10 +36,10 @@ class Agent(nn.Module):
             nn.Linear(640, 128),
             nn.ReLU()
         )
-        self.index = nn.Linear(128, 2)
-        self.std = nn.Linear(128, 2)
-        self.channel = nn.Linear(128, 3)
-        self.critic = nn.Linear(128, 1)
+        self.channel = nn.Linear(128, 3) # discrete
+        self.index = nn.Linear(128, 2) # continuous
+        self.noise = nn.Linear(128, 2) # continuous
+        self.critic = nn.Linear(128, 1) # value
         
         self.optimizer = optim.Adam(self.parameters(), lr=self.lr)
         self.optimization_step = 0
@@ -54,38 +54,56 @@ class Agent(nn.Module):
             model.features._modules["0"]._modules["0"] = torch.nn.Conv2d(3, 32, kernel_size=3, stride=2, padding=1, bias=False)
             if path is not None:
                 model.load_state_dict(torch.load(path))
+        
         return model
+    
     
     def _backbone(self, image, feature):
         mid_feature = self.backbone_part1(image)
-        agent_feature = self.model_part2(mid_feature + feature)
+        agent_feature = self.backbone_part2(mid_feature + feature)
+        
         return agent_feature
+    
         
-    def _policy(self, agent_feature):
-        x = self.policy(agent_feature)
-        pi = self.actor(x)
-        state_v = self.critic(x)
-        return pi
+    def _policy(self, agent_feature, softmax_dim=0):
+        x = self.shared_layer(agent_feature)
         
+        x1 = self.channel(x)
+        channel_prob = F.softmax(x1, softmax_dim)
+        
+        x2 = self.index(x)
+        idx_mu = 1024 * F.sigmoid(x2[0])
+        idx_std = F.softplus(x2[1])
+        idx_dist = Normal(idx_mu, idx_std)
+        
+        x3 = self.noise(x)
+        noise_mu = F.sigmoid(x3[0]) #TODO std range
+        noise_std = F.softplus(x1[1])
+        noise_dist = Normal(noise_mu, noise_std)
+        
+        return channel_prob, idx_dist, noise_dist
+    
+    
+    def _value(self, agent_feature):
+        x = self.shared_layer(agent_feature)
+        v = self.critic(x)
+        
+        return v
+    
+    
     def get_action(self, image, feature):
         agent_feature = self._backbone(image, feature)
-        prob = self._policy(agent_feature)
-        return np.argmax(prob)
-        
-    # def _pi(self, x, softmax_dim = 0):
-    #     x = F.relu(self.fc1(x))
-    #     mu = 2.0*torch.tanh(self.fc_mu(x))
-    #     std = F.softplus(self.fc_std(x))
-    #     return mu, std
-    
-    # def _v(self, x):
-    #     x = F.relu(self.fc1(x))
-    #     v = self.fc_v(x)
-    #     return v
-      
+        channel_prob, idx_dist, noise_dist = self._policy(agent_feature)
+        a_ch = np.argmax(channel_prob)
+        a_idx = idx_dist.sample()
+        a_std = noise_dist.sample()
+        return a_ch, a_idx, a_std
+
+
     def _put_data(self, transition):
         self.data.append(transition)
-        
+    
+    
     def _make_batch(self):
         s_batch, a_batch, r_batch, s_prime_batch, prob_a_batch, done_batch = [], [], [], [], [], []
         data = []
@@ -114,8 +132,8 @@ class Agent(nn.Module):
                 done_batch.append(done_lst)
                     
             mini_batch = torch.tensor(s_batch, dtype=torch.float), torch.tensor(a_batch, dtype=torch.float), \
-                          torch.tensor(r_batch, dtype=torch.float), torch.tensor(s_prime_batch, dtype=torch.float), \
-                          torch.tensor(done_batch, dtype=torch.float), torch.tensor(prob_a_batch, dtype=torch.float)
+                torch.tensor(r_batch, dtype=torch.float), torch.tensor(s_prime_batch, dtype=torch.float), \
+                torch.tensor(done_batch, dtype=torch.float), torch.tensor(prob_a_batch, dtype=torch.float)
             data.append(mini_batch)
 
         return data
