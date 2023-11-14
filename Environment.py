@@ -1,12 +1,13 @@
-import torch
-import glob
+import cv2 as cv
 import numpy as np
-from torchvision.transforms import transforms
 from PIL import Image
+import torch
+from torchvision.transforms import transforms
+
+import glob
 from typing import Union, Tuple
+
 from utils import register_single_hook, return_feature_map, load_model, hook_fn
-
-
 
 class Env():
     def __init__(self, 
@@ -154,7 +155,7 @@ class Env():
 
     def _defense_image(self, channel: int, index: int, std: float) -> None:
         """
-        _defense_image 함수는 주어진 target pixel(index)에 std를 가진 noise를 추가합니다.
+        _defense_image 함수는 주어진 target pixel(index) 주위에 std만큼의 gaussian blur를 적용합니다.
 
         input:
             - channel (int): 변형할 이미지의 channel (0: R, 1: G, 2: B)
@@ -163,8 +164,28 @@ class Env():
         """
         y = index / self.size
         x = index % self.size
-        # self.state[0][channel, y, x]을 중심으로 std만큼 바꿔야됨
+        kernel_radius = int(self.size * std)
+        kernel_size = kernel_radius * 2 + 1
+        considered_radius = kernel_radius * 2
 
+        # Patch coordinate with form (y1, x1, y2, x2)
+        boundary = (
+            max(y - considered_radius, 0),
+            max(x - considered_radius, 0),
+            min(y + considered_radius, self.size - 1),
+            min(x + considered_radius, self.size - 1))
+        
+        # Denormalize
+        considered_patch = (255 * self.state[0][channel, boundary[0]:boundary[2], boundary[1]:boundary[3]]).astype(np.uint8)
+
+        # Apply gaussian filter
+        blurred_patch = cv.GaussianBlur(considered_patch, (kernel_size, kernel_size), 0)
+
+        # Normalize
+        blurred_patch = blurred_patch.astype(float) / 255
+
+        # Overlay blurred patch to original image
+        self.state[0][channel, boundary[0], boundary[1]] = blurred_patch
         
 
     def _get_reward(self, confidence_score: np.ndarray) -> float:
@@ -257,12 +278,13 @@ class Env():
         self._defense_image(channel, index, std)
 
         # Inference image, get new confidence score
-        confidence_score, feature_map = self._inference()
+        # Question: _inference가 인자를 가져야 하나?
+        confidence_score, feature_map = self._inference(torch.tensor(self.state[0]))
 
         # Calculate confidence drift
         reward = self._get_reward(confidence_score)
 
-        # Update informations
+        # Update attributes
         self.state[1] = feature_map
         self.prev_confidence_score = confidence_score
 

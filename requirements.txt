@@ -4,3 +4,4 @@ numpy
 pillow
 tensorboard
 tqdm
+opencv-python-headless
