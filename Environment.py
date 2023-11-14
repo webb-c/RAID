@@ -151,6 +151,36 @@ class Env():
         feature_map = np.array(return_feature_map(self.image_model))
 
         return (confidence_score, feature_map)
+
+    def _defense_image(self, channel: int, index: int, std: float) -> None:
+        """
+        _defense_image 함수는 주어진 target pixel(index)에 std를 가진 noise를 추가합니다.
+
+        input:
+            - channel (int): 변형할 이미지의 channel (0: R, 1: G, 2: B)
+            - index (int): 변형할 image의 index vector
+            - std (float): defense perturbation의 standard deviation
+        """
+        y = index / self.size
+        x = index % self.size
+        # self.state[0][channel, y, x]을 중심으로 std만큼 바꿔야됨
+
+        
+
+    def _get_reward(self, confidence_score: np.ndarray) -> float:
+        """
+        _get_reward 함수는 이미지 모델의 추론에 대한 confidence drift의 정도를 반환합니다.
+
+        input:
+            - confidence_score (np.ndarray): 갱신된 confidence_score
+        output:
+            - reward (float): action을 수행했을 때의 reward를 반환합니다. Reward는 image model의 confidence drift입니다.
+        """
+        target_drift = confidence_score - self.prev_confidence_score
+        non_target_drift = np.delete(confidence_score, self.target_label) - np.delete(self.prev_confidence_score, self.target_label)
+        result = target_drift - self.alpha * non_target_drift
+
+        return result
                 
 
     def train(self) -> None:
@@ -201,3 +231,39 @@ class Env():
         self.prev_confidence_score = confidence_score
         
         return (self.state, self.epoch)
+
+    def step(self, action: Tuple[np.ndarray, np.ndarray]) -> Tuple[Tuple[np.ndarray, np.ndarray], float, bool, bool, None]:
+        """
+        step 함수는 environment에 행할 action을 받아 해당 action을 진행했을 때의 state, reward, termination 여부를 반환합니다.
+
+        input:
+            - action (channel: int, index: int, std: float)
+                - channel (int): 변형할 이미지의 channel (0: R, 1: G, 2: B)
+                - index (int): 변형할 이미지의 pixel index
+                - std (float) perturbation standard deviation
+        output:
+            - state (image: np.ndarray, feature_map: np.ndarray): action이 수행된 이후의 image array와 해당 array의 feature map을 반환합니다.
+            - reward (float): action을 수행했을 때의 reward를 반환합니다. Reward는 image model의 confidence drift입니다.
+            - terminated (bool): agent가 episode의 terminal state에 도착했는지의 여부입니다.
+            - truncated (bool): agent가 episode 도중 truncation condition에 의해 중단되었는지의 여부입니다.
+            - info (None): None을 반환합니다.
+        """
+        channel, index, std = action
+        state = (np.zeros(1), np.zeros(1))
+        terminated = False
+        truncated = False
+
+        # Defense image with action
+        self._defense_image(channel, index, std)
+
+        # Inference image, get new confidence score
+        confidence_score, feature_map = self._inference()
+
+        # Calculate confidence drift
+        reward = self._get_reward(confidence_score)
+
+        # Update informations
+        self.state[1] = feature_map
+        self.prev_confidence_score = confidence_score
+
+        return state, reward, terminated, truncated, None
