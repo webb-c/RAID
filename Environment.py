@@ -267,3 +267,4 @@ class Env():
         self.prev_confidence_score = confidence_score
 
         return state, reward, terminated, truncated, None
+
