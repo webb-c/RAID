@@ -202,7 +202,7 @@ if __name__ == "__main__":
     print('Execute Adversarial.py')
 
     model_name = 'mobilenet'
-    # pretrain_model()
+    pretrain_model()
     model = load_model(model_name, './models/mobilenet.pt')
     make_adv_img(model, model_name)
     # test_image()
