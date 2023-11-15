@@ -61,15 +61,17 @@ class Env():
         _load_dataset 함수는 original image와 perturbed 이미지를 불러옵니다.
         self.mode에 따라서 train, val, test으로 서로 다른 데이터셋을 self.train_dataset, self.val_dataset, self.test_dataset 에 로드합니다.
         """
-        origin_images_paths = glob.glob(f"images/{self.model_name}/origin/{self.mode}")
-        perturbed_images_paths = glob.glob(f"images/{self.model_name}/adv/{self.mode}")
+        origin_images_paths = glob.glob(f"images/{self.model_name}/origin/{self.mode}/*")
+        perturbed_images_paths = glob.glob(f"images/{self.model_name}/adv/{self.mode}/*")
 
         data_num = len(origin_images_paths)
 
         self._make_permutation_list(n = data_num)
         
-        origin_images = (self._return_transform_image(origin_images_paths[index]) for index in self.permutation_list)
-        perturbed_images = (self._return_transform_image(perturbed_images_paths[index]) for index in self.permutation_list)
+        # origin_images = (self._return_transform_image(origin_images_paths[index]) for index in self.permutation_list)
+        # perturbed_images = (self._return_transform_image(perturbed_images_paths[index]) for index in self.permutation_list)
+        origin_images = (origin_images_paths[index] for index in self.permutation_list)
+        perturbed_images = (perturbed_images_paths[index] for index in self.permutation_list)
 
         if self.mode == "train":
             self.train_dataset = {"origin_images" : origin_images, "perturbed_images" : perturbed_images}
@@ -79,6 +81,12 @@ class Env():
 
         elif self.mode == "test":
             self.test_dataset = {"origin_images" : origin_images, "perturbed_images" : perturbed_images}
+
+        if len(origin_images_paths) == len(perturbed_images_paths) and len(origin_images_paths) > 0:
+            print(f"Current mode : {self.mode}")
+            print(f"{len(origin_images_paths)} images succesfully loaded")
+        else:
+            print(f"error")
 
 
     def _return_transform_image(self, image_path: str) -> torch.Tensor:
@@ -122,12 +130,12 @@ class Env():
         if origin_image_path is None and perturbed_image_path is None:
             return -1
         
-        origin_image_tensor: torch.Tensor = self.transform(origin_image_path)
-        perturbed_image_tensor: torch.Tensor = self.transform(perturbed_image_path)
+        origin_image_tensor: torch.Tensor = self._return_transform_image(origin_image_path)
+        perturbed_image_tensor: torch.Tensor = self._return_transform_image(perturbed_image_path)
 
         image_label: int = int(perturbed_image_path.split("_")[1])
 
-        if image_label != int(origin_image_path.split("_")[1]):
+        if image_label != int(origin_image_path.split("_")[1].split(".")[0]):
             raise ValueError("The original class of the original image and the perturbed image is different.")
 
         return (origin_image_tensor, perturbed_image_tensor, image_label)
@@ -143,13 +151,16 @@ class Env():
         output:
             (confidence score, feature map)
         """
+
+        image = image.unsqueeze(0)
+
         with torch.no_grad():
             logit = self.image_model(image)
 
         prob = torch.nn.functional.softmax(logit, dim=0)
         confidence_score = np.array(prob)
 
-        feature_map = np.array(return_feature_map(self.image_model))
+        feature_map = np.array(return_feature_map(self.image_model, self.feature_extract_layer))
 
         return (confidence_score, feature_map)
 
