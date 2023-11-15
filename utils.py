@@ -45,7 +45,7 @@ def load_model(model_name, path=None):
         if path is not None:
             model.load_state_dict(torch.load(path))
 
-    return model
+    return model.eval()
 
 def return_feature_map(model, layer_idx):
     """
@@ -61,20 +61,22 @@ def return_feature_map(model, layer_idx):
     feature_map = None
 
     # Define a recursive function to iterate over the model's children
-    def _recursive_collect_output(model):
+    def _recursive_collect_output(module):
         nonlocal current_idx, feature_map
-        for layer in model.children():
-            if len(list(layer.children())) > 0: # if module has children -> sequential
-                _recursive_collect_output(layer)
-            
-            elif type(layer) == nn.ParameterList:
-                return
-
-            else:
+        for child in module.children():
+            if len(list(child.children())) == 0:  # If it is a leaf module
                 if current_idx == layer_idx:
-                    feature_map = layer.output.cpu()
-                else:
-                    current_idx += 1
+                    feature_map = child.output.cpu()
+                    return True
+                current_idx += 1
+            else:  # If module has children, recursively proceed to add hooks
+                found = _recursive_collect_output(child)
+                if found:  # If we've found and registered the hook, we stop looking
+                    return True
+        return False
+
+
+    
 
     # Start the recursive hook registration process
     _recursive_collect_output(model)
