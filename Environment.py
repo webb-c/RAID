@@ -5,29 +5,27 @@ import torch
 from torchvision.transforms import transforms
 
 import glob
-from typing import Union, Tuple, List
+from typing import Union, Tuple
 
 from utils import register_single_hook, return_feature_map, load_model, hook_fn
 
 class Env():
-    def __init__(self, 
-                 model_name: str = "mobilenet", 
-                 mode: str = "train", 
-                 feature_extract_layer: int = 4, 
-                 alpha: float = 0.5
+    def __init__(self,
+                 args: dict = {'learning_rate': 0.0003, 'gamma': 0.9, 'lmbda': 0.9, 'alpha': 0.5, 'eps_clip': 0.2, 'num_epoch': 10, 'num_step': 50, 'rollout_len': 3, 'buffer_size': 10, 'minibatch_size': 32, 'mode': 'train', 'model_name': 'mobilenet', 'dataset_name': 'CIFAR10', 'layer_idx': 4}
                  ) -> None:
-        self.state: List[np.ndarray, np.ndarray] = None # current state (image, featuremap)
+        
+        self.state: list[np.ndarray] = None # current state [image, featuremap]
         self.target_label: int = None
         self.target_image: np.ndarray = None
         self.episode: int = 0 # current episode (integer)
         self.prev_confidence_score: np.ndarray = None
-        self.alpha: float = alpha
+        self.alpha: float = args["alpha"]
         self.size: int = 32
         self.epoch: int = 1
 
-        self.model_name: str = model_name
+        self.model_name: str = args["model_name"]
 
-        self.permutation_list: np.ndarray = None
+        self.dataset: np.ndarray = None
 
         self.train_dataset: dict = None
         self.val_dataset: dict = None
@@ -38,65 +36,86 @@ class Env():
             transforms.Normalize((0, 0, 0), (1, 1, 1))
         ])
 
-        self.mode = mode
-        self.feature_extract_layer = feature_extract_layer
+        self.mode = args["mode"]
+        self.layer_idx = args["layer_idx"]
 
         self.image_model: torch.nn.Module = self._load_model()
         self._load_dataset()
 
     # return permutation list
-    def _make_permutation_list(self, n) -> np.ndarray:
+    def _get_permutation_list(self, n) -> np.ndarray:
         """ 
         _make_permutation_list 함수는 [0,n-1] 에 속하는 정수로 permutation vector를 반환합니다.
         
         input 
             n : 만들고 싶은 permutation vector의 길이
         output
-            없음 
+            permutation_vector : [0, n-1] 가 중복되지 않고 섞여있는 np.ndarray
         """
-        self.permutation_list = np.random.permutation(n)
+        permutation_vector = np.random.permutation(n)
+        return permutation_vector
 
     def _load_dataset(self) -> None:
         """ 
-        _load_dataset 함수는 original image와 perturbed 이미지를 불러옵니다.
-        self.mode에 따라서 train, val, test으로 서로 다른 데이터셋을 self.train_dataset, self.val_dataset, self.test_dataset 에 로드합니다.
+        _load_dataset 함수는 self.mode에 맞는 original image, perturbed image, label을 불러와 [self.train_dataset, self.val_dataset, self.test_dataset] 중 self.mode에 해당하는 변수에 저장합니다.
         """
-        origin_images_paths = glob.glob(f"images/{self.model_name}/origin/{self.mode}/*")
+        original_images_paths = glob.glob(f"images/{self.model_name}/origin/{self.mode}/*")
         perturbed_images_paths = glob.glob(f"images/{self.model_name}/adv/{self.mode}/*")
 
-        data_num = len(origin_images_paths)
 
-        self._make_permutation_list(n = data_num)
-        
-        # origin_images = (self._return_transform_image(origin_images_paths[index]) for index in self.permutation_list)
-        # perturbed_images = (self._return_transform_image(perturbed_images_paths[index]) for index in self.permutation_list)
-        origin_images = (origin_images_paths[index] for index in self.permutation_list)
-        perturbed_images = (perturbed_images_paths[index] for index in self.permutation_list)
+        original_images = original_images_paths
+        perturbed_images = perturbed_images_paths
+        original_classes = [self._get_class(image_path) for image_path in original_images_paths]
 
         if self.mode == "train":
-            self.train_dataset = {"origin_images" : origin_images, "perturbed_images" : perturbed_images}
+            self.train_dataset = {"original_images" : original_images, "perturbed_images" : perturbed_images, "original_classes" : original_classes, "num_images" : len(original_images)}
 
         elif self.mode == "val":
-            self.val_dataset = {"origin_images" : origin_images, "perturbed_images" : perturbed_images}
+            self.val_dataset = {"original_images" : original_images, "perturbed_images" : perturbed_images, "original_classes" : original_classes, "num_images" : len(original_images)}
 
         elif self.mode == "test":
-            self.test_dataset = {"origin_images" : origin_images, "perturbed_images" : perturbed_images}
+            self.test_dataset = {"original_images" : original_images, "perturbed_images" : perturbed_images, "original_classes" : original_classes, "num_images" : len(original_images)}
 
-        if len(origin_images_paths) == len(perturbed_images_paths) and len(origin_images_paths) > 0:
+
+    def _set_dataset(self) -> None:
+
+        if self.mode == "train":
+            dataset = self.train_dataset
+
+        elif self.mode == "val":
+            dataset = self.val_dataset
+
+        elif self.mode == "test":
+            dataset = self.test_dataset
+
+        data_num = dataset["num_images"]
+
+        permutation_list = self._get_permutation_list(n = data_num)
+        
+        original_images = (self._get_transform_image(dataset["original_images"][index]) for index in permutation_list)
+        perturbed_images = (self._get_transform_image(dataset["perturbed_images"][index]) for index in permutation_list)
+        original_classes = (dataset["original_classes"][index] for index in permutation_list)
+
+        self.dataset = {"original_images" : original_images, "perturbed_images" : perturbed_images, "original_classes" : original_classes}
+
+        if len(permutation_list) > 0:
             print(f"Current mode : {self.mode}")
-            print(f"{len(origin_images_paths)} images succesfully loaded")
+            print(f"{len(permutation_list)} images succesfully loaded")
         else:
             print(f"error")
 
 
-    def _return_transform_image(self, image_path: str) -> torch.Tensor:
+    def _get_transform_image(self, image_path: str) -> torch.Tensor:
         with Image.open(image_path) as img:
             return self.transform(img)
+        
+    def _get_class(self, image_name: str) -> int:
+        return int(image_name.split("_")[1].split(".")[0])
         
     def _load_model(self) -> torch.nn.Module:
         model_path = f"models/{self.model_name}.pt"
         image_model = load_model(self.model_name, model_path)
-        register_single_hook(image_model, self.feature_extract_layer, hook_fn)
+        register_single_hook(image_model, self.layer_idx, hook_fn)
 
         return image_model
     
@@ -111,34 +130,19 @@ class Env():
         output:
             (origin_image_tensor, perturbed_image_tensor, image_label)
         """
-        
-        if self.mode == "train":
-            dataset = self.train_dataset
-
-        elif self.mode == "val":
-            dataset = self.val_dataset
-
-        elif self.mode == "test":
-            dataset = self.test_dataset
             
-        origin_images = dataset["origin_images"]
-        perturbed_images = dataset["perturbed_images"]
+        original_images = self.dataset["original_images"]
+        perturbed_images = self.dataset["perturbed_images"]
+        original_classes = self.dataset["original_classes"]
 
-        origin_image_path = next(origin_images, None)
-        perturbed_image_path = next(perturbed_images, None)
+        origin_image = next(original_images, None)
+        perturbed_image = next(perturbed_images, None)
+        original_class = next(original_classes, None)
 
-        if origin_image_path is None and perturbed_image_path is None:
+        if origin_image is None and perturbed_image is None and original_class is None:
             return -1
         
-        origin_image_tensor: torch.Tensor = self._return_transform_image(origin_image_path)
-        perturbed_image_tensor: torch.Tensor = self._return_transform_image(perturbed_image_path)
-
-        image_label: int = int(perturbed_image_path.split("_")[1])
-
-        if image_label != int(origin_image_path.split("_")[1].split(".")[0]):
-            raise ValueError("The original class of the original image and the perturbed image is different.")
-
-        return (origin_image_tensor, perturbed_image_tensor, image_label)
+        return (origin_image, perturbed_image, original_class)
         
     
 
@@ -160,7 +164,7 @@ class Env():
         prob = torch.nn.functional.softmax(logit, dim=1)
         confidence_score = np.array(prob)
 
-        feature_map = np.array(return_feature_map(self.image_model, self.feature_extract_layer))
+        feature_map = np.array(return_feature_map(self.image_model, self.layer_idx))
 
         return (confidence_score, feature_map)
 
@@ -220,19 +224,21 @@ class Env():
 
         if self.train_dataset is None:
             self._load_dataset()
+        self._set_dataset()
 
     def val(self) -> None:
         self.mode = "val"
 
         if self.val_dataset is None:
             self._load_dataset()
+        self._set_dataset()
 
     def test(self) -> None:
         self.mode = "test"
 
         if self.test_dataset is None:
             self._load_dataset()
-        
+        self._set_dataset()
 
     def reset(self) -> Tuple[Tuple[np.ndarray, np.ndarray], int]:
         """
@@ -248,7 +254,7 @@ class Env():
 
         if next == -1:
             self.epoch += 1
-            self._load_dataset()
+            self._set_dataset()
             origin_image_tensor, perturbed_image_tensor, image_label = self._get_next_image_label()
         else:
             origin_image_tensor, perturbed_image_tensor, image_label = next
