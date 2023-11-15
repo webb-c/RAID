@@ -5,7 +5,7 @@ import torch
 from torchvision.transforms import transforms
 
 import glob
-from typing import Union, Tuple
+from typing import Union, Tuple, List
 
 from utils import register_single_hook, return_feature_map, load_model, hook_fn
 
@@ -16,7 +16,7 @@ class Env():
                  feature_extract_layer: int = 4, 
                  alpha: float = 0.5
                  ) -> None:
-        self.state: Tuple[np.ndarray, np.ndarray] = None # current state (image, featuremap)
+        self.state: List[np.ndarray, np.ndarray] = None # current state (image, featuremap)
         self.target_label: int = None
         self.target_image: np.ndarray = None
         self.episode: int = 0 # current episode (integer)
@@ -142,7 +142,7 @@ class Env():
         
     
 
-    def _inference(self, image: torch.Tensor = None) -> Tuple[np.ndarray, np.ndarray]:
+    def _inference(self) -> Tuple[np.ndarray, np.ndarray]:
         """
         _inference 함수는 입력에 대한 target DNN 모델의 confidence score와 중간 feature를 반환합니다.
 
@@ -152,12 +152,12 @@ class Env():
             (confidence score, feature map)
         """
 
-        image = image.unsqueeze(0)
+        image = torch.tensor(self.state[0]).unsqueeze(0)
 
         with torch.no_grad():
             logit = self.image_model(image)
 
-        prob = torch.nn.functional.softmax(logit, dim=0)
+        prob = torch.nn.functional.softmax(logit, dim=1)
         confidence_score = np.array(prob)
 
         feature_map = np.array(return_feature_map(self.image_model, self.feature_extract_layer))
@@ -253,12 +253,13 @@ class Env():
         else:
             origin_image_tensor, perturbed_image_tensor, image_label = next
 
-        confidence_score, feature_map = self._inference(perturbed_image_tensor)
+        self.state = [np.array(perturbed_image_tensor), None]
+        confidence_score, feature_map = self._inference()
 
         self.episode += 1
         self.target_image = np.array(origin_image_tensor)
         self.target_label = image_label
-        self.state = (np.array(perturbed_image_tensor), np.array(feature_map))
+        self.state = [np.array(perturbed_image_tensor), np.array(feature_map)]
 
         self.prev_confidence_score = confidence_score
         
@@ -290,7 +291,7 @@ class Env():
 
         # Inference image, get new confidence score
         # Question: _inference가 인자를 가져야 하나?
-        confidence_score, feature_map = self._inference(torch.tensor(self.state[0]))
+        confidence_score, feature_map = self._inference()
 
         # Calculate confidence drift
         reward = self._get_reward(confidence_score)
