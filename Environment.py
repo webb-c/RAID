@@ -22,6 +22,7 @@ class Env():
         self.alpha: float = args["alpha"]
         self.size: int = 32
         self.epoch: int = 1
+        self.truncated_step = 10 # TODO get value from args
 
         self.model_name: str = args["model_name"]
 
