@@ -82,3 +82,11 @@ def return_feature_map(model, layer_idx):
     _recursive_collect_output(model)
 
     return feature_map
+
+def print_nested_info(obj, depth=0):
+    if isinstance(obj, (list, tuple)):
+        print(f"Depth {depth}: {type(obj).__name__} with length = {len(obj)}")
+        if len(obj) > 0:
+            print_nested_info(obj[0], depth + 1)
+    else:
+        print(f"Depth {depth}: Element type = {type(obj)}")

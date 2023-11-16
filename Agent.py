@@ -7,7 +7,9 @@ from torchsummary import summary
 from torch.distributions import Normal, Categorical
 from torchvision.models import mobilenet_v2
 
+from utils import print_nested_info
 from main import parse_opt
+
 
 class Agent(nn.Module):
     def __init__(self, config):
@@ -23,7 +25,7 @@ class Agent(nn.Module):
         self.eps_clip = config["eps_clip"]
         # self.rollout_len = config["rollout_len"]         
         self.K_epochs = config["K_epochs"]               # K
-        self.buffer_size = config["buffer_size"]         # NT
+        self.buffer_size = config["buffer_size"]         # NT = step?
         self.minibatch_size = config["minibatch_size"]   # M
         ### parameter for RAID
         self.action_num = 3
@@ -176,8 +178,8 @@ class Agent(nn.Module):
                 s_prime_batch.append(s_prime_lst)
                 prob_a_batch.append(prob_a_lst)
                 done_batch.append(done_lst)
-                
-            print(type(s[0]))
+            
+            print_nested_info(s_batch)
             mini_batch = torch.tensor(s_batch, dtype=torch.float), torch.tensor(a_batch, dtype=torch.float), \
                 torch.tensor(r_batch, dtype=torch.float), torch.tensor(s_prime_batch, dtype=torch.float), \
                 torch.tensor(done_batch, dtype=torch.float), torch.tensor(prob_a_batch, dtype=torch.float)
@@ -245,6 +247,7 @@ if __name__ == '__main__':
     model = Agent(conf)
     score = 0.0
     print_interval = 20
+    step = 20
 
     for n_epi in range(10000):
         state = (torch.rand(1, 3, 32, 32), torch.rand(1, 32, 16, 16))
@@ -252,7 +255,7 @@ if __name__ == '__main__':
         r = 10
         done = False
         while not done:
-            for t in range(20):
+            for t in range(step):
                 actions, action_probs = model.get_actions(state)
                 r = 10
                 model.put_data((state, actions, r, state_prme, action_probs, done))
