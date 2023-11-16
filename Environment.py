@@ -63,6 +63,10 @@ class Env():
         original_images_paths = glob.glob(f"images/{self.model_name}/origin/{self.mode}/*")
         perturbed_images_paths = glob.glob(f"images/{self.model_name}/adv/{self.mode}/*")
 
+        if not original_images_paths :
+            raise FileNotFoundError(f"Path not found Error (original_images_paths)")
+        if not perturbed_images_paths :
+            raise FileNotFoundError(f"Path not found Error (perturbed_images_paths)")
 
         original_images = original_images_paths
         perturbed_images = perturbed_images_paths
@@ -103,7 +107,7 @@ class Env():
             print(f"Current mode : {self.mode}")
             print(f"{len(permutation_list)} images succesfully loaded")
         else:
-            print(f"error")
+            raise FileNotFoundError(f"permutation dataset load Error")
 
 
     def _get_transform_image(self, image_path: str) -> torch.Tensor:
