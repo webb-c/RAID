@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from torchsummary import summary
 from torch.distributions import Normal, Categorical
 from torchvision.models import mobilenet_v2
 
@@ -30,12 +31,8 @@ class Agent(nn.Module):
         self.alpha = config["alpha"]
         self.model_name = config["model_name"]
         
-        # PPO model setting
-        self.backbone = self.load_model(self.model_name)
-        self.backbone = nn.Sequential(*list(self.backbone.children())[:-1])
-        layers = list(self.backbone.children())
-        self.backbone_part1 = nn.Sequential(*layers[:self.layer_idx+1])
-        self.backbone_part2 = nn.Sequential(*layers[self.layer_idx+1:])
+        # PPO model setting   
+        self.backbone_part1, self.backbone_part2 = self._split_model()
         self.shared_layer = nn.Sequential(
             nn.Linear(1280, 640),
             nn.ReLU(),
@@ -63,12 +60,35 @@ class Agent(nn.Module):
         
         return model
     
+    def _split_model(self):
+        backbone = self._load_model()
+        current_idx = 0
+        part1_layers, part2_layers = [], []
+        
+        def _recursive_add_layers(module):
+            nonlocal current_idx
+            for child in module.children():
+                if len(list(child.children())) == 0 : 
+                    if current_idx <= self.layer_idx:
+                        part1_layers.append(child)
+                    else:
+                        part2_layers.append(child)
+                    current_idx += 1
+                else: 
+                    _recursive_add_layers(child)            
+            return
+
+        _recursive_add_layers(backbone)
+        part1_model, part2_model = nn.Sequential(*part1_layers), nn.Sequential(*part2_layers[:-1])
+        
+        return part1_model, part2_model
+
     
     def _backbone(self, image, feature):
         mid_feature = self.backbone_part1(image)
+        # print(feature.shape, mid_feature.shape)
         agent_feature = self.backbone_part2(mid_feature + feature)
-        
-        return agent_feature
+        return agent_feature.flatten()
     
         
     def _policy(self, agent_feature, softmax_dim=0):
@@ -79,12 +99,12 @@ class Agent(nn.Module):
         channel_dist = Categorical(channel_prob)
         
         x2 = self.index(x)
-        idx_mu = F.Tanh(x2[0])
+        idx_mu = torch.tanh(x2[0])
         idx_std = F.softplus(x2[1])
         idx_dist = Normal(idx_mu, idx_std)
         
         x3 = self.noise(x)
-        noise_mu = F.Tanh(x3[0])
+        noise_mu = torch.tanh(x3[0])
         noise_std = F.softplus(x1[1])
         noise_dist = Normal(noise_mu, noise_std)
         
@@ -98,13 +118,20 @@ class Agent(nn.Module):
         return v
     
     
-    def get_actions(self, state, softmax_dim=0):
+    def get_actions(self, state, train=False, softmax_dim=0):
         """ object : input을 받아, 내부에서 _backbone, _policy 함수를 호출한 뒤 action과 해당 action의 log_prob들을 tuple로 반환한다.
         input : state -> Tuple, softmax_dim -> int
         output : actions -> Tuple, probs -> Tuple
         """
-        agent_feature = self._backbone(state[0], state[1])
-        channel_dist, idx_dist, noise_dist = self._policy(agent_feature, softmax_dim)
+        if not train:
+            self.backbone_part1.eval()
+            self.backbone_part2.eval()
+            with torch.no_grad():
+                agent_feature = self._backbone(state[0], state[1])
+                channel_dist, idx_dist, noise_dist = self._policy(agent_feature, softmax_dim)
+        else :
+            agent_feature = self._backbone(state[0], state[1])
+            channel_dist, idx_dist, noise_dist = self._policy(agent_feature, softmax_dim)
         
         ch_a = channel_dist.sample()
         ch_log_prob = channel_dist.log_prob(ch_a)
@@ -115,7 +142,7 @@ class Agent(nn.Module):
         return (ch_a, idx_a, std_a), (ch_log_prob, idx_log_prob, noise_log_prob)
 
 
-    def _put_data(self, transition):
+    def put_data(self, transition):
         self.data.append(transition)
     
     
@@ -188,7 +215,7 @@ class Agent(nn.Module):
                 for mini_batch in data:
                     s, a, r, s_prime, done_mask, old_log_probs, td_target, advantages = mini_batch
 
-                    actions, log_probs = self.get_actions(s, softmax_dim=1)
+                    actions, log_probs = self.get_actions(s, True, softmax_dim=1)
                     loss_list = []
                     for i in range(self.action_num) :
                         ratio = torch.exp(log_probs[i] - old_log_probs[i])
@@ -214,13 +241,13 @@ if __name__ == '__main__':
     print_interval = 20
 
     for n_epi in range(10000):
-        state = (torch.rand(3, 32, 32), torch.rand(1, 32, 16, 16))
-        state_prme = (torch.rand(3, 32, 32), torch.rand(1, 32, 16, 16))
+        state = (torch.rand(1, 3, 32, 32), torch.rand(1, 32, 16, 16))
+        state_prme = (torch.rand(1, 3, 32, 32), torch.rand(1, 32, 16, 16))
         r = 10
         done = False
         while not done:
             for t in range(20):
-                actions, action_probs = model.get_action(state)
+                actions, action_probs = model.get_actions(state)
 
                 r = 10
                 model.put_data((state, actions, r, state_prme, action_probs, done))
