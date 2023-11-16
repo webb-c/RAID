@@ -150,8 +150,10 @@ class Agent(nn.Module):
         ch_log_prob = channel_dist.log_prob(ch_a)
         idx_a = idx_dist.sample()
         idx_log_prob = idx_dist.log_prob(idx_a)
+        idx_a = torch.clamp(idx_a*1023, 0, 1023).int()
         std_a = noise_dist.sample()
         noise_log_prob = noise_dist.log_prob(std_a)
+        std_a = torch.clamp(std_a*0.25, 0, 0.25)
         
         return (ch_a, idx_a, std_a), (ch_log_prob, idx_log_prob, noise_log_prob)
 
