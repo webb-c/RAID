@@ -3,28 +3,32 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.distributions import Normal
+from torch.distributions import Normal, Categorical
 from torchvision.models import mobilenet_v2
 
 class Agent(nn.Module):
     def __init__(self, config):
         super(Agent, self).__init__()
         self.data = []
-        # parameter
+        # parameter setting
+        ### parameter for PPO
+        self.mode = config["mode"]
+        self.max_ep_len = config["max_ep_len"]
         self.lr = config["learning_rate"]
         self.gamma = config["gamma"]
+        self.lmbda = config["lmbda"]
         self.eps_clip = config["eps_clip"]
+        self.rollout_len = config["rollout_len"]         
+        self.K_epochs = config["K_epochs"]               # K
+        self.buffer_size = config["buffer_size"]         # NT
+        self.minibatch_size = config["minibatch_size"]   # M
+        ### parameter for RAID
+        self.action_num = 3
         self.layer_idx = config["layer_idx"]
-        self.mode = config["mode"]
-        self.rollout_len = config["rollout_len"]
-        self.buffer_size = config["buffer_size"]
-        self.minibatch_size = config["minibatch_size"]
         self.alpha = config["alpha"]
         self.model_name = config["model_name"]
-        # self.lmbda = config["lmbda"]
-        self.action_dim = 7
         
-        # PPO DNN model
+        # PPO model setting
         self.backbone = self.load_model(self.model_name)
         self.backbone = nn.Sequential(*list(self.backbone.children())[:-1])
         layers = list(self.backbone.children())
@@ -36,18 +40,18 @@ class Agent(nn.Module):
             nn.Linear(640, 128),
             nn.ReLU()
         )
-        self.channel = nn.Linear(128, 3) # discrete
-        self.index = nn.Linear(128, 2) # continuous
-        self.noise = nn.Linear(128, 2) # continuous
-        self.critic = nn.Linear(128, 1) # value
+        self.channel = nn.Linear(128, 3) # discrete action : select channel
+        self.index = nn.Linear(128, 2)   # continuous action1 : select index num
+        self.noise = nn.Linear(128, 2)   # continuous action2 : select noise std
+        self.critic = nn.Linear(128, 1)  # value network
         
         self.optimizer = optim.Adam(self.parameters(), lr=self.lr)
         self.optimization_step = 0
 
     
-    def _load_model(model_name, path=None): 
-        # in utils.py
-        if model_name == 'mobilenet':
+    def _load_model(self, path=None): 
+        # from utils.py -> 추후 제거
+        if self.model_name == 'mobilenet':
             model = mobilenet_v2(weights='IMAGENET1K_V1')
             num_ftrs = model.classifier._modules["1"].in_features
             model.classifier._modules["1"] = torch.nn.Linear(num_ftrs, 10)
@@ -69,19 +73,20 @@ class Agent(nn.Module):
         x = self.shared_layer(agent_feature)
         
         x1 = self.channel(x)
-        channel_prob = F.softmax(x1, softmax_dim)
+        channel_prob = F.softmax(x1, dim=softmax_dim)
+        channel_dist = Categorical(channel_prob)
         
         x2 = self.index(x)
-        idx_mu = 1024 * F.sigmoid(x2[0])
+        idx_mu = F.Tanh(x2[0])
         idx_std = F.softplus(x2[1])
         idx_dist = Normal(idx_mu, idx_std)
         
         x3 = self.noise(x)
-        noise_mu = F.sigmoid(x3[0]) #TODO std range
+        noise_mu = F.Tanh(x3[0])
         noise_std = F.softplus(x1[1])
         noise_dist = Normal(noise_mu, noise_std)
         
-        return channel_prob, idx_dist, noise_dist
+        return channel_dist, idx_dist, noise_dist
     
     
     def _value(self, agent_feature):
@@ -91,13 +96,21 @@ class Agent(nn.Module):
         return v
     
     
-    def get_action(self, image, feature):
-        agent_feature = self._backbone(image, feature)
-        channel_prob, idx_dist, noise_dist = self._policy(agent_feature)
-        a_ch = np.argmax(channel_prob)
-        a_idx = idx_dist.sample()
-        a_std = noise_dist.sample()
-        return a_ch, a_idx, a_std
+    def get_actions(self, state, softmax_dim=0):
+        """ object : input을 받아, 내부에서 _backbone, _policy 함수를 호출한 뒤 action과 해당 action의 log_prob들을 tuple로 반환한다.
+        input : state -> Tuple, softmax_dim -> int
+        output : actions -> Tuple, probs -> Tuple
+        """
+        agent_feature = self._backbone(state[0], state[1])
+        channel_dist, idx_dist, noise_dist = self._policy(agent_feature, softmax_dim)
+        
+        ch_a = channel_dist.sample()
+        ch_log_prob = channel_dist.log_prob(ch_a)
+        idx_a = idx_dist.sample()
+        idx_log_prob = idx_dist.log_prob(idx_a)
+        std_a = noise_dist.sample()
+        noise_log_prob = noise_dist.log_prob(std_a)
+        return (ch_a, idx_a, std_a), (ch_log_prob, idx_log_prob, noise_log_prob)
 
 
     def _put_data(self, transition):
@@ -117,10 +130,10 @@ class Agent(nn.Module):
                     s, a, r, s_prime, prob_a, done = transition
                     
                     s_lst.append(s)
-                    a_lst.append([a])
+                    a_lst.append(a)
                     r_lst.append([r])
                     s_prime_lst.append(s_prime)
-                    prob_a_lst.append([prob_a])
+                    prob_a_lst.append(prob_a)
                     done_mask = 0 if done else 1
                     done_lst.append([done_mask])
 
@@ -134,6 +147,7 @@ class Agent(nn.Module):
             mini_batch = torch.tensor(s_batch, dtype=torch.float), torch.tensor(a_batch, dtype=torch.float), \
                 torch.tensor(r_batch, dtype=torch.float), torch.tensor(s_prime_batch, dtype=torch.float), \
                 torch.tensor(done_batch, dtype=torch.float), torch.tensor(prob_a_batch, dtype=torch.float)
+            
             data.append(mini_batch)
 
         return data
@@ -141,44 +155,51 @@ class Agent(nn.Module):
     def _calc_advantage(self, data):
         data_with_adv = []
         for mini_batch in data:
-            s, a, r, s_prime, done_mask, old_log_prob = mini_batch
+            s, a, r, s_prime, done_mask, old_log_probs = mini_batch
             with torch.no_grad():
-                td_target = r + self.gamma * self.v(s_prime) * done_mask
-                delta = td_target - self.v(s)
+                td_target = r + self.gamma * self._value(s_prime) * done_mask
+                delta = td_target - self._value(s)
             delta = delta.numpy()
 
             advantage_lst = []
             advantage = 0.0
             for delta_t in delta[::-1]:
-                advantage = self.gamma * lmbda * advantage + delta_t[0]
+                advantage = self.gamma * self.lmbda * advantage + delta_t[0]
                 advantage_lst.append([advantage])
             advantage_lst.reverse()
             advantage = torch.tensor(advantage_lst, dtype=torch.float)
-            data_with_adv.append((s, a, r, s_prime, done_mask, old_log_prob, td_target, advantage))
+            data_with_adv.append((s, a, r, s_prime, done_mask, old_log_probs, td_target, advantage))
 
         return data_with_adv
 
         
     def train_net(self):
+        """ object : buffer가 가득차면 buffer에 쌓여있는 데이터를 사용하여 K_epochs번 DNN의 업데이트를 진행합니다.
+        input : None
+        output : None
+        """
         if len(self.data) == self.minibatch_size * self.buffer_size:
-            data = self.make_batch()
-            data = self.calc_advantage(data)
+            data = self._make_batch()
+            data = self._calc_advantage(data)
 
-            for i in range(K_epoch):
+            for _ in range(self.K_epochs):  # 이 횟수만큼 저장된 데이터를 사용하여 학습한다.
                 for mini_batch in data:
-                    s, a, r, s_prime, done_mask, old_log_prob, td_target, advantage = mini_batch
+                    s, a, r, s_prime, done_mask, old_log_probs, td_target, advantages = mini_batch
 
-                    mu, std = self.pi(s, softmax_dim=1)
-                    dist = Normal(mu, std)
-                    log_prob = dist.log_prob(a)
-                    ratio = torch.exp(log_prob - old_log_prob)  # a/b == exp(log(a)-log(b))
+                    actions, log_probs = self.get_actions(s, softmax_dim=1)
+                    loss_list = []
+                    for i in range(self.action_num) :
+                        ratio = torch.exp(log_probs[i] - old_log_probs[i])
+                        surr1 = ratio * advantages
+                        surr2 = torch.clamp(ratio, 1-self.eps_clip, 1+self.eps_clip) * advantages
+                        loss = -torch.min(surr1, surr2) + F.smooth_l1_loss(self.v(s) , td_target)
+                        loss_list.append(loss)
 
-                    surr1 = ratio * advantage
-                    surr2 = torch.clamp(ratio, 1-eps_clip, 1+eps_clip) * advantage
-                    loss = -torch.min(surr1, surr2) + F.smooth_l1_loss(self.v(s) , td_target)
-
+                    #TODO loss
+                    loss = sum(loss_list)
                     self.optimizer.zero_grad()
                     loss.mean().backward()
                     nn.utils.clip_grad_norm_(self.parameters(), 1.0)
                     self.optimizer.step()
                     self.optimization_step += 1
+                    
