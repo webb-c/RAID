@@ -1,16 +1,11 @@
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from tqdm import tqdm
-from torchsummary import summary
 from torch.distributions import Normal, Categorical
-from torchvision.models import mobilenet_v2
-import warnings
+from utils import print_nested_info, load_model
 
-from utils import print_nested_info
-from main import parse_opt
 
 class RolloutBuffer:
     def __init__(self, buffer_size, minibatch_size):
@@ -19,18 +14,14 @@ class RolloutBuffer:
         self.buffer_size = buffer_size
         self.minibatch_size = minibatch_size
 
-    def clear(self):
-        del self.buffer[:]
-    
-    def put(self, transition):
-        self.buffer.append(transition)
-    
+
     def _make_batch(self):
+        """ object : buffer에 저장된 buffer_size * minibatch_size개의 데이터를 buffer_size개의 minibatch가 담긴 데이터로 전환하여 저장합니다."""
         self.batch_data = []
-        for j in range(self.buffer_size):
+        for i in range(self.buffer_size):
             a_batch, r_batch, prob_a_batch, done_batch = [], [], [], []
             img_batch, feat_batch, img_prime_batch, feat_prime_batch = [], [], [], []
-            for i in range(self.minibatch_size):
+            for j in range(self.minibatch_size):
                 transition = self.buffer.pop()
                 s, a, r, s_prime, prob_a, done = transition
                 img_batch.append(s[0])
@@ -52,14 +43,46 @@ class RolloutBuffer:
 
             self.batch_data.append(mini_batch)
     
+    
+    def clear(self):
+        """ object: buffer를 비웁니다.
+        input: None
+        output: None
+        """
+        del self.buffer[:]
+    
+    
+    def put(self, transition):
+        """ object: buffer에 transition을 넣습니다.
+        input: transition -> Tuple[Tuple[torch.Tensor, torch.Tensor], Tuple[int, int, float], float, 
+                Tuple[torch.Tensor, torch.Tensor], Tuple[float, float, float], bool]
+        output: None
+        """
+        self.buffer.append(transition)
+    
+    
     def get_batch(self):
+        """ object: 내부에서 _make_batch()를 호출하여 만든 batch data를 반환합니다.
+        input: None
+        output: self.batch_data -> List[[[List[torch.Tensor, torch.Tensor], torch.Tensor, torch.Tensor, 
+                                        List[torch.Tensor, torch.Tensor], torch.Tensor, torch.Tensor], ... (#32)], ... (#10)]
+        """
         self._make_batch()
+        
         return self.batch_data
         
+        
     def is_full(self):
+        """ object: 현재 buffer가 minibatch를 만들 수 있을 정도로 가득 찬 상태인지 확인하고 그 결과를 반환합니다.
+        input: None
+        output: bool
+        """
+        flag = False
         if len(self.buffer) >= self.buffer_size * self.minibatch_size :
-            return True
-        return False
+            flag = True
+        
+        return flag
+
 
 class Agent(nn.Module):
     def __init__(self, config):
@@ -80,7 +103,6 @@ class Agent(nn.Module):
         self.layer_idx = config["layer_idx"]
         self.alpha = config["alpha"]
         self.model_name = config["model_name"]
-        
         # PPO model setting   
         self.backbone_part1, self.backbone_part2 = self._split_model()
         self.shared_layer = nn.Sequential(
@@ -96,22 +118,11 @@ class Agent(nn.Module):
         
         self.optimizer = optim.Adam(self.parameters(), lr=self.lr)
         self.optimization_step = 0
-
     
-    def _load_model(self, path=None): 
-        # from utils.py -> 추후 제거
-        if self.model_name == 'mobilenet':
-            model = mobilenet_v2(weights='IMAGENET1K_V1')
-            num_ftrs = model.classifier._modules["1"].in_features
-            model.classifier._modules["1"] = torch.nn.Linear(num_ftrs, 10)
-            model.features._modules["0"]._modules["0"] = torch.nn.Conv2d(3, 32, kernel_size=3, stride=2, padding=1, bias=False)
-            if path is not None:
-                model.load_state_dict(torch.load(path))
-        
-        return model
     
     def _split_model(self):
-        backbone = self._load_model()
+        """ object: backbone으로 사용할 모델을 로드하고 layer_idx를 기준으로 2개의 부분으로 모델을 나누어 반환합니다."""
+        backbone = load_model(self.model_name)
         current_idx = 0
         part1_layers, part2_layers = [], []
         
@@ -133,14 +144,18 @@ class Agent(nn.Module):
         
         return part1_model, part2_model
 
+
     def _backbone(self, img, feature):
+        """ object: img를 part1에 통과시키고, 그 결과를 feature와 addition한 뒤 part2에 통과시켜 얻은 최종 feature를 반환합니다."""
         mid_feature = self.backbone_part1(img)
         agent_feature = self.backbone_part2(mid_feature + feature)
         agent_feature = torch.squeeze(agent_feature)
+        
         return agent_feature
     
         
     def _policy(self, agent_feature, softmax_dim=0, batch=False):
+        """ object: backbone을 통과하여 얻어진 feature를 각각의 policy layer를 통과시켜 action의 distribution을 계산해 반환합니다."""
         x = self.shared_layer(agent_feature)
         
         x1 = self.channel(x)
@@ -163,7 +178,9 @@ class Agent(nn.Module):
         
         return channel_dist, idx_dist, noise_dist
     
+    
     def _calc_advantage(self, data):
+        """ object: 하나의 batch 안에 들어있는 각각의 mini_batch별로 Advantage를 계산하고 advantage를 추가한 batch를 만들어 반환합니다."""
         data_with_adv = []
         for mini_batch in data:
             s, a, r, s_prime, done_mask, old_log_probs = mini_batch
@@ -183,10 +200,12 @@ class Agent(nn.Module):
 
         return data_with_adv
     
+    
     def get_value(self, state):
-        """ object : input을 받아, 내부에서 _backbone 함수를 호출한 뒤 value를 반환한다.
-        input : state -> Tuple
-        output : value -> float or Tensor <dtype=float>
+        """ object: input을 받아, 내부에서 _backbone 함수를 호출한 뒤 value를 반환합니다.
+        *get_value는 Advantage를 계산할 때, 항상 batch단위로 호출되기 때문에 output이 Tensor형태입니다.
+        input: state -> Tuple[torch.Tensor, torch.Tensor]
+        output: value -> torch.Tensor[float]
         """
         img, feature = state
         with torch.no_grad():
@@ -196,10 +215,12 @@ class Agent(nn.Module):
         
         return v
     
+    
     def get_actions(self, state, train=False):
-        """ object : input을 받아, 내부에서 _backbone, _policy 함수를 호출한 뒤 action과 해당 action의 log_prob들을 tuple로 반환한다.
-        input : state -> Tuple, train -> bool
-        output : actions -> Tuple, probs -> Tuple
+        """ object: input을 받아, 내부에서 _backbone, _policy 함수를 호출한 뒤 action과 해당 action의 log_prob들을 tuple로 반환합니다.
+        *만약 train하는 과정이라면 batch 단위로 실행되기 때문에 output이 (32, .) 형태의 Tensor로 반환됩니다.
+        input: state -> Tuple[torch.Tensor, torch.Tensor]; train -> bool
+        output: actions -> Tuple[int, int, float]; probs -> Tuple[float, float, float]
         """
         img, feature = state
         if not train:
@@ -214,9 +235,11 @@ class Agent(nn.Module):
         
         ch_a = channel_dist.sample()
         ch_log_prob = channel_dist.log_prob(ch_a)
+        
         idx_a = idx_dist.sample()
         idx_log_prob = idx_dist.log_prob(idx_a)
         idx_a = torch.clamp(idx_a*1023, 0, 1023).int()
+        
         std_a = noise_dist.sample()
         noise_log_prob = noise_dist.log_prob(std_a)
         std_a = torch.clamp(std_a*0.25, 0, 0.25)
@@ -225,6 +248,11 @@ class Agent(nn.Module):
 
 
     def put_data(self, transition):
+        """ object: 1번의 transition 데이터를 Tensor타입을 제거한 뒤 put()을 호출하여 buffer에 집어넣습니다.
+        input: transition -> Tuple[Tuple[torch.Tensor, torch.Tensor], Tuple[int, int, float], float, 
+                                Tuple[torch.Tensor, torch.Tensor], Tuple[float, float, float], bool]
+        output: None
+        """
         s, a, r, s_prime, prob_a, done = transition
         s_noTensor = [data.tolist() for data in s]
         s_prime_noTensor = [data.tolist() for data in s_prime]
@@ -232,15 +260,15 @@ class Agent(nn.Module):
 
         
     def train_net(self):
-        """ object : buffer가 가득차면 buffer에 쌓여있는 데이터를 사용하여 K_epochs번 DNN의 업데이트를 진행합니다.
-        input : None
-        output : None
+        """ object: buffer가 가득차면 buffer에 쌓여있는 데이터를 사용하여 K_epochs번 DNN의 업데이트를 진행합니다.
+        input: None
+        output: None
         """
         if self.buffer.is_full() :
             data = self.buffer.get_batch()
             data = self._calc_advantage(data)
 
-            for _ in range(self.K_epochs):  # 이 횟수만큼 저장된 데이터를 사용하여 학습한다.
+            for _ in range(self.K_epochs): 
                 for mini_batch in data:
                     s, a, r, s_prime, done_mask, old_log_probs, td_target, advantages = mini_batch
                     old_log_probs = old_log_probs.transpose(0, 1)
@@ -262,33 +290,3 @@ class Agent(nn.Module):
                     self.optimizer.step()
                     self.optimization_step += 1
                     
-# for testing
-if __name__ == '__main__':
-    warnings.filterwarnings('ignore', category=UserWarning)
-    args = parse_opt()
-    conf = dict(**args.__dict__)
-    model = Agent(conf)
-    score = 0.0
-    print_interval = 20
-    step = 20
-
-    for n_epi in tqdm(range(10000)):
-        state = (torch.rand(1, 3, 32, 32), torch.rand(1, 32, 16, 16))
-        state_prme = (torch.rand(1, 3, 32, 32), torch.rand(1, 32, 16, 16))
-        r = 10
-        done = False
-        for tt in range(30):  # done
-            for t in range(step):
-                # print(n_epi, t, tt)
-                actions, action_probs = model.get_actions(state)
-                print(actions)
-                r = 10
-                model.put_data((state, actions, r, state_prme, action_probs, done))
-
-                score += r
-                
-            model.train_net()
-
-        if n_epi%print_interval==0 and n_epi!=0:
-            print("# of episode :{}, avg score : {:.1f}".format(n_epi, score/print_interval))
-            score = 0.0
