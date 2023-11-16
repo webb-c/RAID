@@ -22,6 +22,7 @@ class Env():
         self.alpha: float = args["alpha"]
         self.size: int = 32
         self.epoch: int = 1
+        self.num_epoch = args['num_epoch']
 
         self.model_name: str = args["model_name"]
 
@@ -212,10 +213,8 @@ class Env():
         output:
             - reward (float): action을 수행했을 때의 reward를 반환합니다. Reward는 image model의 confidence drift입니다.
         """
-        confidence_drift = confidence_score - self.prev_confidence_score
-        target_drift = confidence_drift[self.target_label]
-        non_target_drift = np.delete(confidence_drift, self.target_label)
-        result = target_drift - self.alpha * np.sum(non_target_drift)
+        target_drift = confidence_score[self.target_label] - self.prev_confidence_score[self.target_label]
+        result = self.alpha * target_drift
 
         return result
                 
@@ -292,13 +291,19 @@ class Env():
         state = (np.zeros(1), np.zeros(1))
         terminated = False
         truncated = False
+        self.epoch += 1
 
         # Defense image with action
         self._defense_image(channel, index, std)
 
         # Inference image, get new confidence score
-        # Question: _inference가 인자를 가져야 하나?
         confidence_score, feature_map = self._inference()
+
+        # Terminate condition
+        if np.argmax(confidence_score) == self.target_label:
+            terminated = True
+        elif self.epoch >= self.num_epoch:
+            truncated = True
 
         # Calculate confidence drift
         reward = self._get_reward(confidence_score)
@@ -308,4 +313,3 @@ class Env():
         self.prev_confidence_score = confidence_score
 
         return state, reward, terminated, truncated, None
-
