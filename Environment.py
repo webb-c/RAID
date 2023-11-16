@@ -184,7 +184,7 @@ class Env():
         """
         y = index // self.size
         x = index % self.size
-        kernel_radius = int(self.size * std)
+        kernel_radius = int(self.size * std) + 1
         kernel_size = kernel_radius * 2 + 1
         considered_radius = kernel_radius * 2
 
@@ -197,7 +197,7 @@ class Env():
         
         # Denormalize
         considered_patch = (255 * self.state[0][channel, boundary[0]:boundary[2], boundary[1]:boundary[3]]).astype(np.uint8)
-
+        
         # Apply gaussian filter
         blurred_patch = cv.GaussianBlur(considered_patch, (kernel_size, kernel_size), 0)
 
@@ -257,9 +257,8 @@ class Env():
             (image: np.ndarray, feature_map: np.ndarray)
         """
         next = self._get_next_image_label()
-
+        self.epoch = 0
         if next == -1:
-            self.epoch += 1
             self._set_dataset()
             origin_image_tensor, perturbed_image_tensor, image_label = self._get_next_image_label()
         else:
@@ -318,4 +317,4 @@ class Env():
         self.state[1] = feature_map
         self.prev_confidence_score = confidence_score
 
-        return state, reward, terminated, truncated, None
+        return self.state, reward, terminated, truncated, None

@@ -62,19 +62,20 @@ def main(conf):
         state, _ = env.reset()
         done = False
         for step in range(num_step):
-            print(episode, step)
             actions, action_probs = agent.get_actions(state)
             state_prime, reward, terminated, truncated, info = env.step(actions)
             if terminated or truncated :
+                print("# of step :", step, "terminated :", terminated, "truncated :", truncated)
                 done = True
             agent.put_data((state, actions, reward, state_prime, action_probs, done))
+            reward = reward.item()
             total_reward += reward
             state = state_prime
             if done : 
                 break
         agent.train_net()
         
-        if episode % interval == 0 :
+        if episode % interval == 0 and step != 0:
             print("# of episode :{}, avg reward : {:.2f}, total reward : {:.2f}".format(episode, total_reward/step, total_reward))
     
 if __name__ == "__main__":
