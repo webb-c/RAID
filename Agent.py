@@ -166,7 +166,13 @@ class Agent(nn.Module):
             x3 = x3.transpose(0, 1)
         
         channel_prob = F.softmax(x1, dim=softmax_dim)
-        channel_dist = Categorical(channel_prob)
+        try:
+            channel_dist = Categorical(channel_prob)
+        except Exception as e:
+            print(x1)
+            print(channel_prob)
+            print(channel_dist)
+            
         
         idx_mu = torch.sigmoid(x2[0])
         idx_std = F.softplus(x2[1])

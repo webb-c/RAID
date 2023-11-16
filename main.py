@@ -5,6 +5,7 @@ from pyprnt import prnt
 from Agent import Agent
 from Environment import Env
 from Manager import Manager
+from datetime import datetime
 
 def str2bool(v):
     """ object: command line 인자 중 bool 타입을 판별하기 위한 함수입니다."""
@@ -48,9 +49,7 @@ def parse_opt(known=False):
 def main(conf):
     """ object: PPO 알고리즘을 사용하여 Attacked Image를 defense하는 policy를 Agent에게 학습시킵니다."""
     manager = Manager(use=True)
-    print("===== Experiment Setting =====")
     prnt(conf)
-    print()
     
     # Hyper-parameter
     num_episode = conf["num_episode"]
@@ -85,13 +84,17 @@ def main(conf):
             total_reward += epi_reward
             # record total_reward & avg_reward & loss for each episode
             manager.record(mode+"/total_reward", epi_reward, episode)
-            manager.record(mode+"/avg_reward", epi_reward/(step+1), episode)
+            manager.record(mode+"/avg_reward", (epi_reward/(step+1)), episode)
             if loss is not None :
                 manager.record(mode+"/loss", loss.mean().item(), episode)
             if episode % print_interval == 0 and step != 0:
-                print("\n# of episode :{}, avg reward : {:.2f}, total reward : {:.2f}".format(episode, epi_reward/print_interval, epi_reward))
+                print("\n# of episode :{}, avg reward : {:.2f}, total reward : {:.2f}".format(episode, 100*(epi_reward/print_interval), 100*epi_reward))
                 epi_reward = 0
-
+    
+    print("Train finish with,")
+    prnt(conf)
+    print("Start:\t", manager.get_time().strftime('%m-%d %H:%M:%S'))
+    print("End:\t", datetime.now().strftime('%m-%d %H:%M:%S'))
 
 
 if __name__ == "__main__":
@@ -100,4 +103,3 @@ if __name__ == "__main__":
     conf = dict(**args.__dict__)
     
     main(conf)
-    
