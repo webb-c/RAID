@@ -5,7 +5,7 @@ class Manager():
     def __init__(self, model_name='mobilenet', attack='PGD_Linf', use=True):
         # main에서 선언 필요
         now = datetime.now()
-        time = now.strftime('%m-%d-%H_%M_%S')
+        time = now.strftime('%m-%d_%H%M%S')
         self.use = use
         if self.use : 
             self.writer = SummaryWriter(f'./logs/{model_name}_{attack}/{time}')
