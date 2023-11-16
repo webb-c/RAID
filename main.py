@@ -57,11 +57,12 @@ def main(conf):
     agent = Agent(conf)
     
     # Train code
-    for episode in tqdm(range(num_episode)):
+    for episode in range(num_episode):
         total_reward = 0
         state, _ = env.reset()
         done = False
         for step in range(num_step):
+            print(episode, step)
             actions, action_probs = agent.get_actions(state)
             state_prime, reward, terminated, truncated, info = env.step(actions)
             if terminated or truncated :

@@ -217,7 +217,9 @@ class Env():
         output:
             - reward (float): action을 수행했을 때의 reward를 반환합니다. Reward는 image model의 confidence drift입니다.
         """
-        target_drift = confidence_score[self.target_label] - self.prev_confidence_score[self.target_label]
+        confidence_score = confidence_score.T
+        prev_confidence_score = self.prev_confidence_score.T
+        target_drift = confidence_score[self.target_label] - prev_confidence_score[self.target_label]
         result = self.alpha * target_drift
 
         return result
