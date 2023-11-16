@@ -1,5 +1,5 @@
 import argparse
-from Agent import Agent
+# from Agent import Agent
 
 def str2bool(v):
     if isinstance(v, bool):
@@ -12,11 +12,11 @@ def str2bool(v):
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
 
-def parge_opt(known=False):
+def parse_opt(known=False):
     parser = argparse.ArgumentParser()
     
     parser.add_argument("-mode", "--mode", type=str, default="train", help="train / val / test")
-    parser.add_argument("-eps", "--max_ep_len", type=int, dafault=10, help="max timesteps in one episode")
+    parser.add_argument("-eps", "--max_ep_len", type=int, default=10, help="max timesteps in one episode")
     parser.add_argument("-lr", "--learning_rate", type=float, default=0.0003, help="learning rate")
     parser.add_argument("-g", "--gamma", type=float, default=0.9, help=" discount factor gamma")
     parser.add_argument("-lmbda", "--lmbda", type=float, default=0.9, help="hyperparameter lambda for cal GAE")
@@ -43,6 +43,6 @@ def main(conf):
     
     
 if __name__ == "__main__":
-    args = parge_opt()
+    args = parse_opt()
     conf = dict(**args.__dict__)
     main(conf)

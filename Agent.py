@@ -6,7 +6,7 @@ import torch.optim as optim
 from torch.distributions import Normal, Categorical
 from torchvision.models import mobilenet_v2
 
-from main import parge_opt
+from main import parse_opt
 
 class Agent(nn.Module):
     def __init__(self, config):
@@ -207,7 +207,7 @@ class Agent(nn.Module):
                     
 # for testing
 if __name__ == '__main__':
-    args = parge_opt()
+    args = parse_opt()
     conf = dict(**args.__dict__)
     model = Agent(conf)
     score = 0.0
