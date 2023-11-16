@@ -6,6 +6,8 @@ import torch.optim as optim
 from torch.distributions import Normal, Categorical
 from torchvision.models import mobilenet_v2
 
+from main import parge_opt
+
 class Agent(nn.Module):
     def __init__(self, config):
         super(Agent, self).__init__()
@@ -203,3 +205,32 @@ class Agent(nn.Module):
                     self.optimizer.step()
                     self.optimization_step += 1
                     
+# for testing
+if __name__ == '__main__':
+    args = parge_opt()
+    conf = dict(**args.__dict__)
+    model = Agent(conf)
+    score = 0.0
+    print_interval = 20
+
+    for n_epi in range(10000):
+        state = (torch.rand(3, 32, 32), torch.rand(1, 32, 16, 16))
+        state_prme = (torch.rand(3, 32, 32), torch.rand(1, 32, 16, 16))
+        r = 10
+        done = False
+        while not done:
+            for t in range(20):
+                actions, action_probs = model.get_action(state)
+
+                r = 10
+                model.put_data((state, actions, r, state_prme, action_probs, done))
+
+                score += r
+                if done:
+                    break
+
+            model.train_net()
+
+        if n_epi%print_interval==0 and n_epi!=0:
+            print("# of episode :{}, avg score : {:.1f}".format(n_epi, score/print_interval))
+            score = 0.0
