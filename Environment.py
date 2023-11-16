@@ -178,7 +178,7 @@ class Env():
             - index (int): 변형할 image의 index vector
             - std (float): defense perturbation의 standard deviation
         """
-        y = index / self.size
+        y = index // self.size
         x = index % self.size
         kernel_radius = int(self.size * std)
         kernel_size = kernel_radius * 2 + 1
@@ -201,7 +201,7 @@ class Env():
         blurred_patch = blurred_patch.astype(float) / 255
 
         # Overlay blurred patch to original image
-        self.state[0][channel, boundary[0], boundary[1]] = blurred_patch
+        self.state[0][channel, boundary[0]:boundary[2], boundary[1]:boundary[3]] = blurred_patch
         
 
     def _get_reward(self, confidence_score: np.ndarray) -> float:
@@ -213,9 +213,10 @@ class Env():
         output:
             - reward (float): action을 수행했을 때의 reward를 반환합니다. Reward는 image model의 confidence drift입니다.
         """
-        target_drift = confidence_score - self.prev_confidence_score
-        non_target_drift = np.delete(confidence_score, self.target_label) - np.delete(self.prev_confidence_score, self.target_label)
-        result = target_drift - self.alpha * non_target_drift
+        confidence_drift = confidence_score - self.prev_confidence_score
+        target_drift = confidence_drift[self.target_label]
+        non_target_drift = np.delete(confidence_drift, self.target_label)
+        result = target_drift - self.alpha * np.sum(non_target_drift)
 
         return result
                 
