@@ -21,7 +21,7 @@ class Agent(nn.Module):
         self.gamma = config["gamma"]
         self.lmbda = config["lmbda"]
         self.eps_clip = config["eps_clip"]
-        self.rollout_len = config["rollout_len"]         
+        # self.rollout_len = config["rollout_len"]         
         self.K_epochs = config["K_epochs"]               # K
         self.buffer_size = config["buffer_size"]         # NT
         self.minibatch_size = config["minibatch_size"]   # M
@@ -130,6 +130,8 @@ class Agent(nn.Module):
                 agent_feature = self._backbone(state[0], state[1])
                 channel_dist, idx_dist, noise_dist = self._policy(agent_feature, softmax_dim)
         else :
+            self.backbone_part1.train()
+            self.backbone_part2.train()
             agent_feature = self._backbone(state[0], state[1])
             channel_dist, idx_dist, noise_dist = self._policy(agent_feature, softmax_dim)
         
@@ -143,19 +145,21 @@ class Agent(nn.Module):
 
 
     def put_data(self, transition):
-        self.data.append(transition)
+        s, a, r, s_prime, prob_a, done = transition
+        s_noTensor = [data.tolist() for data in s]
+        s_prime_noTensor = [data.tolist() for data in s_prime]
+        self.data.append((s_noTensor, a, r, s_prime_noTensor, prob_a, done))
     
     
     def _make_batch(self):
         s_batch, a_batch, r_batch, s_prime_batch, prob_a_batch, done_batch = [], [], [], [], [], []
-        data = []
+        batch_data = []
 
         for j in range(self.buffer_size):
             for i in range(self.minibatch_size):
-                rollout = self.data.pop()
                 s_lst, a_lst, r_lst, s_prime_lst, prob_a_lst, done_lst = [], [], [], [], [], []
 
-                for transition in rollout:
+                for transition in self.data:
                     s, a, r, s_prime, prob_a, done = transition
                     
                     s_lst.append(s)
@@ -172,14 +176,16 @@ class Agent(nn.Module):
                 s_prime_batch.append(s_prime_lst)
                 prob_a_batch.append(prob_a_lst)
                 done_batch.append(done_lst)
-                    
+                
+            print(type(s[0]))
             mini_batch = torch.tensor(s_batch, dtype=torch.float), torch.tensor(a_batch, dtype=torch.float), \
                 torch.tensor(r_batch, dtype=torch.float), torch.tensor(s_prime_batch, dtype=torch.float), \
                 torch.tensor(done_batch, dtype=torch.float), torch.tensor(prob_a_batch, dtype=torch.float)
-            
-            data.append(mini_batch)
 
-        return data
+            
+            batch_data.append(mini_batch)
+
+        return batch_data
 
     def _calc_advantage(self, data):
         data_with_adv = []
@@ -248,7 +254,6 @@ if __name__ == '__main__':
         while not done:
             for t in range(20):
                 actions, action_probs = model.get_actions(state)
-
                 r = 10
                 model.put_data((state, actions, r, state_prme, action_probs, done))
 
