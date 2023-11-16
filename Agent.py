@@ -223,10 +223,10 @@ class Agent(nn.Module):
         output: actions -> Tuple[int, int, float]; probs -> Tuple[float, float, float]
         """
         img, feature = state
-        img = torch.tensor(img).unsqueeze(0)
-        feature = torch.tensor(feature)
         if not train:
             self.eval()
+            img = torch.tensor(img).unsqueeze(0)
+            feature = torch.tensor(feature)
             with torch.no_grad():
                 agent_feature = self._backbone(img, feature)
                 channel_dist, idx_dist, noise_dist = self._policy(agent_feature, softmax_dim=0)

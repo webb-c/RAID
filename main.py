@@ -1,5 +1,6 @@
 import warnings
 import argparse
+import torch
 from tqdm import tqdm
 from pyprnt import prnt
 from Agent import Agent
