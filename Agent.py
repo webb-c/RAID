@@ -223,6 +223,8 @@ class Agent(nn.Module):
         output: actions -> Tuple[int, int, float]; probs -> Tuple[float, float, float]
         """
         img, feature = state
+        img = torch.tensor(img).unsqueeze(0)
+        feature = torch.tensor(feature)
         if not train:
             self.eval()
             with torch.no_grad():

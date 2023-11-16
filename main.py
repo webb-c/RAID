@@ -80,7 +80,6 @@ if __name__ == "__main__":
     warnings.filterwarnings('ignore', category=UserWarning)
     args = parse_opt()
     conf = dict(**args.__dict__)
-    try:
-        main(conf)
-    except Exception as e:
-        print(e)
+    
+    main(conf)
+    
