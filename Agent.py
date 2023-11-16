@@ -225,6 +225,8 @@ class Agent(nn.Module):
         img, feature = state
         if not train:
             self.eval()
+            img = torch.tensor(img).unsqueeze(0)
+            feature = torch.tensor(feature)
             with torch.no_grad():
                 agent_feature = self._backbone(img, feature)
                 channel_dist, idx_dist, noise_dist = self._policy(agent_feature, softmax_dim=0)
@@ -262,8 +264,9 @@ class Agent(nn.Module):
     def train_net(self):
         """ object: buffer가 가득차면 buffer에 쌓여있는 데이터를 사용하여 K_epochs번 DNN의 업데이트를 진행합니다.
         input: None
-        output: None
+        output: None or loss
         """
+        loss = None
         if self.buffer.is_full() :
             data = self.buffer.get_batch()
             data = self._calc_advantage(data)
@@ -289,4 +292,6 @@ class Agent(nn.Module):
                     nn.utils.clip_grad_norm_(self.parameters(), 1.0)
                     self.optimizer.step()
                     self.optimization_step += 1
+        
+        return loss
                     
