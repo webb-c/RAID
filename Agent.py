@@ -12,11 +12,59 @@ import warnings
 from utils import print_nested_info
 from main import parse_opt
 
+class RolloutBuffer:
+    def __init__(self, buffer_size, minibatch_size):
+        self.buffer = []
+        self.batch_data = []
+        self.buffer_size = buffer_size
+        self.minibatch_size = minibatch_size
+
+    def clear(self):
+        del self.buffer[:]
+    
+    def put(self, transition):
+        self.buffer.append(transition)
+    
+    def _make_batch(self):
+        self.batch_data = []
+        for j in range(self.buffer_size):
+            a_batch, r_batch, prob_a_batch, done_batch = [], [], [], []
+            img_batch, feat_batch, img_prime_batch, feat_prime_batch = [], [], [], []
+            for i in range(self.minibatch_size):
+                transition = self.buffer.pop()
+                s, a, r, s_prime, prob_a, done = transition
+                img_batch.append(s[0])
+                feat_batch.append(s[1])
+                a_batch.append(a)
+                r_batch.append([r])
+                img_prime_batch.append(s_prime[0])
+                feat_prime_batch.append(s_prime[1])
+                prob_a_batch.append(prob_a)
+                done_mask = 0 if done else 1
+                done_batch.append(done_mask)
+            
+            img_batch = torch.squeeze(torch.tensor(img_batch), 1)
+            feat_batch = torch.squeeze(torch.tensor(feat_batch), 1)
+            img_prime_batch = torch.squeeze(torch.tensor(img_prime_batch), 1)
+            feat_prime_batch = torch.squeeze(torch.tensor(feat_prime_batch), 1)
+            mini_batch = [img_batch, feat_batch],  torch.tensor(a_batch, dtype=torch.float), torch.tensor(r_batch, dtype=torch.float), \
+                [img_batch, feat_batch], torch.tensor(done_batch, dtype=torch.float), torch.tensor(prob_a_batch, dtype=torch.float)
+
+            self.batch_data.append(mini_batch)
+    
+    def get_batch(self):
+        self._make_batch()
+        return self.batch_data
+        
+    def is_full(self):
+        if len(self.buffer) >= self.buffer_size * self.minibatch_size :
+            return True
+        return False
 
 class Agent(nn.Module):
     def __init__(self, config):
         super(Agent, self).__init__()
-        self.data = []
+        self.buffer = RolloutBuffer(config["buffer_size"], config["minibatch_size"])
         # parameter setting
         ### parameter for PPO
         self.mode = config["mode"]
@@ -25,8 +73,7 @@ class Agent(nn.Module):
         self.gamma = config["gamma"]
         self.lmbda = config["lmbda"]
         self.eps_clip = config["eps_clip"]     
-        self.K_epochs = config["K_epochs"]               # K
-        self.buffer_size = config["buffer_size"]         # NT = step?
+        self.K_epochs = config["K_epochs"]               
         self.minibatch_size = config["minibatch_size"]   # M
         ### parameter for RAID
         self.action_num = 3
@@ -116,6 +163,25 @@ class Agent(nn.Module):
         
         return channel_dist, idx_dist, noise_dist
     
+    def _calc_advantage(self, data):
+        data_with_adv = []
+        for mini_batch in data:
+            s, a, r, s_prime, done_mask, old_log_probs = mini_batch
+
+            td_target = r + self.gamma * self.get_value(s_prime) * done_mask
+            delta = td_target - self.get_value(s)
+            delta = delta.numpy()
+
+            advantage_lst = []
+            advantage = 0.0
+            for delta_t in delta[::-1]:
+                advantage = self.gamma * self.lmbda * advantage + delta_t[0]
+                advantage_lst.append([advantage])
+            advantage_lst.reverse()
+            advantage = torch.tensor(advantage_lst, dtype=torch.float)
+            data_with_adv.append((s, a, r, s_prime, done_mask, old_log_probs, td_target, advantage))
+
+        return data_with_adv
     
     def get_value(self, state):
         """ object : input을 받아, 내부에서 _backbone 함수를 호출한 뒤 value를 반환한다.
@@ -162,60 +228,7 @@ class Agent(nn.Module):
         s, a, r, s_prime, prob_a, done = transition
         s_noTensor = [data.tolist() for data in s]
         s_prime_noTensor = [data.tolist() for data in s_prime]
-        self.data.append((s_noTensor, a, r, s_prime_noTensor, prob_a, done))
-    
-    
-    def _make_batch(self):
-        batch_data = []
-
-        for j in range(self.buffer_size):
-            a_batch, r_batch, prob_a_batch, done_batch = [], [], [], []
-            img_batch, feat_batch, img_prime_batch, feat_prime_batch = [], [], [], []
-            for i in range(self.minibatch_size):
-                transition = self.data.pop()
-                s, a, r, s_prime, prob_a, done = transition
-                img_batch.append(s[0])
-                feat_batch.append(s[1])
-                a_batch.append(a)
-                r_batch.append([r])
-                img_prime_batch.append(s_prime[0])
-                feat_prime_batch.append(s_prime[1])
-                prob_a_batch.append(prob_a)
-                done_mask = 0 if done else 1
-                done_batch.append(done_mask)
-            
-            img_batch = torch.squeeze(torch.tensor(img_batch), 1)
-            feat_batch = torch.squeeze(torch.tensor(feat_batch), 1)
-            img_prime_batch = torch.squeeze(torch.tensor(img_prime_batch), 1)
-            feat_prime_batch = torch.squeeze(torch.tensor(feat_prime_batch), 1)
-            mini_batch = [img_batch, feat_batch],  torch.tensor(a_batch, dtype=torch.float), torch.tensor(r_batch, dtype=torch.float), \
-                [img_batch, feat_batch], torch.tensor(done_batch, dtype=torch.float), torch.tensor(prob_a_batch, dtype=torch.float)
-
-            batch_data.append(mini_batch)
-        
-        # print_nested_info(s_batch)
-        # print_nested_info(batch_data)
-        return batch_data
-
-    def _calc_advantage(self, data):
-        data_with_adv = []
-        for mini_batch in data:
-            s, a, r, s_prime, done_mask, old_log_probs = mini_batch
-
-            td_target = r + self.gamma * self.get_value(s_prime) * done_mask
-            delta = td_target - self.get_value(s)
-            delta = delta.numpy()
-
-            advantage_lst = []
-            advantage = 0.0
-            for delta_t in delta[::-1]:
-                advantage = self.gamma * self.lmbda * advantage + delta_t[0]
-                advantage_lst.append([advantage])
-            advantage_lst.reverse()
-            advantage = torch.tensor(advantage_lst, dtype=torch.float)
-            data_with_adv.append((s, a, r, s_prime, done_mask, old_log_probs, td_target, advantage))
-
-        return data_with_adv
+        self.buffer.put((s_noTensor, a, r, s_prime_noTensor, prob_a, done))
 
         
     def train_net(self):
@@ -223,8 +236,8 @@ class Agent(nn.Module):
         input : None
         output : None
         """
-        if len(self.data) == self.minibatch_size * self.buffer_size:
-            data = self._make_batch()
+        if self.buffer.is_full() :
+            data = self.buffer.get_batch()
             data = self._calc_advantage(data)
 
             for _ in range(self.K_epochs):  # 이 횟수만큼 저장된 데이터를 사용하여 학습한다.
@@ -264,7 +277,7 @@ if __name__ == '__main__':
         state_prme = (torch.rand(1, 3, 32, 32), torch.rand(1, 32, 16, 16))
         r = 10
         done = False
-        for tt in range(30):
+        for tt in range(30):  # done
             for t in range(step):
                 # print(n_epi, t, tt)
                 actions, action_probs = model.get_actions(state)
