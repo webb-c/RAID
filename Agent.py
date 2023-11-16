@@ -3,9 +3,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from tqdm import tqdm
 from torchsummary import summary
 from torch.distributions import Normal, Categorical
 from torchvision.models import mobilenet_v2
+import warnings
 
 from utils import print_nested_info
 from main import parse_opt
@@ -22,8 +24,7 @@ class Agent(nn.Module):
         self.lr = config["learning_rate"]
         self.gamma = config["gamma"]
         self.lmbda = config["lmbda"]
-        self.eps_clip = config["eps_clip"]
-        # self.rollout_len = config["rollout_len"]         
+        self.eps_clip = config["eps_clip"]     
         self.K_epochs = config["K_epochs"]               # K
         self.buffer_size = config["buffer_size"]         # NT = step?
         self.minibatch_size = config["minibatch_size"]   # M
@@ -85,57 +86,65 @@ class Agent(nn.Module):
         
         return part1_model, part2_model
 
-    
-    def _backbone(self, image, feature):
-        mid_feature = self.backbone_part1(image)
-        # print(feature.shape, mid_feature.shape)
+    def _backbone(self, img, feature):
+        mid_feature = self.backbone_part1(img)
         agent_feature = self.backbone_part2(mid_feature + feature)
-        return agent_feature.flatten()
+        agent_feature = torch.squeeze(agent_feature)
+        return agent_feature
     
         
-    def _policy(self, agent_feature, softmax_dim=0):
+    def _policy(self, agent_feature, softmax_dim=0, batch=False):
         x = self.shared_layer(agent_feature)
         
         x1 = self.channel(x)
+        x2 = self.index(x)
+        x3 = self.noise(x)
+        if batch :
+            x2 = x2.transpose(0, 1)
+            x3 = x3.transpose(0, 1)
+        
         channel_prob = F.softmax(x1, dim=softmax_dim)
         channel_dist = Categorical(channel_prob)
         
-        x2 = self.index(x)
-        idx_mu = torch.tanh(x2[0])
+        idx_mu = torch.sigmoid(x2[0])
         idx_std = F.softplus(x2[1])
         idx_dist = Normal(idx_mu, idx_std)
         
-        x3 = self.noise(x)
-        noise_mu = torch.tanh(x3[0])
-        noise_std = F.softplus(x1[1])
+        noise_mu = torch.sigmoid(x3[0])
+        noise_std = F.softplus(x3[1])
         noise_dist = Normal(noise_mu, noise_std)
         
         return channel_dist, idx_dist, noise_dist
     
     
-    def _value(self, agent_feature):
-        x = self.shared_layer(agent_feature)
-        v = self.critic(x)
+    def get_value(self, state):
+        """ object : input을 받아, 내부에서 _backbone 함수를 호출한 뒤 value를 반환한다.
+        input : state -> Tuple
+        output : value -> float or Tensor <dtype=float>
+        """
+        img, feature = state
+        with torch.no_grad():
+            agent_feature = self._backbone(img, feature)
+            x = self.shared_layer(agent_feature)
+            v = self.critic(x)
         
         return v
     
-    
-    def get_actions(self, state, train=False, softmax_dim=0):
+    def get_actions(self, state, train=False):
         """ object : input을 받아, 내부에서 _backbone, _policy 함수를 호출한 뒤 action과 해당 action의 log_prob들을 tuple로 반환한다.
-        input : state -> Tuple, softmax_dim -> int
+        input : state -> Tuple, train -> bool
         output : actions -> Tuple, probs -> Tuple
         """
+        img, feature = state
         if not train:
-            self.backbone_part1.eval()
-            self.backbone_part2.eval()
+            self.eval()
             with torch.no_grad():
-                agent_feature = self._backbone(state[0], state[1])
-                channel_dist, idx_dist, noise_dist = self._policy(agent_feature, softmax_dim)
+                agent_feature = self._backbone(img, feature)
+                channel_dist, idx_dist, noise_dist = self._policy(agent_feature, softmax_dim=0)
         else :
-            self.backbone_part1.train()
-            self.backbone_part2.train()
-            agent_feature = self._backbone(state[0], state[1])
-            channel_dist, idx_dist, noise_dist = self._policy(agent_feature, softmax_dim)
+            self.train()
+            agent_feature = self._backbone(img, feature)
+            channel_dist, idx_dist, noise_dist = self._policy(agent_feature, softmax_dim=1, batch=True)
         
         ch_a = channel_dist.sample()
         ch_log_prob = channel_dist.log_prob(ch_a)
@@ -143,6 +152,7 @@ class Agent(nn.Module):
         idx_log_prob = idx_dist.log_prob(idx_a)
         std_a = noise_dist.sample()
         noise_log_prob = noise_dist.log_prob(std_a)
+        
         return (ch_a, idx_a, std_a), (ch_log_prob, idx_log_prob, noise_log_prob)
 
 
@@ -154,48 +164,44 @@ class Agent(nn.Module):
     
     
     def _make_batch(self):
-        s_batch, a_batch, r_batch, s_prime_batch, prob_a_batch, done_batch = [], [], [], [], [], []
         batch_data = []
 
         for j in range(self.buffer_size):
+            a_batch, r_batch, prob_a_batch, done_batch = [], [], [], []
+            img_batch, feat_batch, img_prime_batch, feat_prime_batch = [], [], [], []
             for i in range(self.minibatch_size):
-                s_lst, a_lst, r_lst, s_prime_lst, prob_a_lst, done_lst = [], [], [], [], [], []
-
-                for transition in self.data:
-                    s, a, r, s_prime, prob_a, done = transition
-                    
-                    s_lst.append(s)
-                    a_lst.append(a)
-                    r_lst.append([r])
-                    s_prime_lst.append(s_prime)
-                    prob_a_lst.append(prob_a)
-                    done_mask = 0 if done else 1
-                    done_lst.append([done_mask])
-
-                s_batch.append(s_lst)
-                a_batch.append(a_lst)
-                r_batch.append(r_lst)
-                s_prime_batch.append(s_prime_lst)
-                prob_a_batch.append(prob_a_lst)
-                done_batch.append(done_lst)
+                transition = self.data.pop()
+                s, a, r, s_prime, prob_a, done = transition
+                img_batch.append(s[0])
+                feat_batch.append(s[1])
+                a_batch.append(a)
+                r_batch.append([r])
+                img_prime_batch.append(s_prime[0])
+                feat_prime_batch.append(s_prime[1])
+                prob_a_batch.append(prob_a)
+                done_mask = 0 if done else 1
+                done_batch.append(done_mask)
             
-            print_nested_info(s_batch)
-            mini_batch = torch.tensor(s_batch, dtype=torch.float), torch.tensor(a_batch, dtype=torch.float), \
-                torch.tensor(r_batch, dtype=torch.float), torch.tensor(s_prime_batch, dtype=torch.float), \
-                torch.tensor(done_batch, dtype=torch.float), torch.tensor(prob_a_batch, dtype=torch.float)
+            img_batch = torch.squeeze(torch.tensor(img_batch), 1)
+            feat_batch = torch.squeeze(torch.tensor(feat_batch), 1)
+            img_prime_batch = torch.squeeze(torch.tensor(img_prime_batch), 1)
+            feat_prime_batch = torch.squeeze(torch.tensor(feat_prime_batch), 1)
+            mini_batch = [img_batch, feat_batch],  torch.tensor(a_batch, dtype=torch.float), torch.tensor(r_batch, dtype=torch.float), \
+                [img_batch, feat_batch], torch.tensor(done_batch, dtype=torch.float), torch.tensor(prob_a_batch, dtype=torch.float)
 
-            
             batch_data.append(mini_batch)
-
+        
+        # print_nested_info(s_batch)
+        # print_nested_info(batch_data)
         return batch_data
 
     def _calc_advantage(self, data):
         data_with_adv = []
         for mini_batch in data:
             s, a, r, s_prime, done_mask, old_log_probs = mini_batch
-            with torch.no_grad():
-                td_target = r + self.gamma * self._value(s_prime) * done_mask
-                delta = td_target - self._value(s)
+
+            td_target = r + self.gamma * self.get_value(s_prime) * done_mask
+            delta = td_target - self.get_value(s)
             delta = delta.numpy()
 
             advantage_lst = []
@@ -222,14 +228,15 @@ class Agent(nn.Module):
             for _ in range(self.K_epochs):  # 이 횟수만큼 저장된 데이터를 사용하여 학습한다.
                 for mini_batch in data:
                     s, a, r, s_prime, done_mask, old_log_probs, td_target, advantages = mini_batch
-
-                    actions, log_probs = self.get_actions(s, True, softmax_dim=1)
+                    old_log_probs = old_log_probs.transpose(0, 1)
+                    actions, log_probs = self.get_actions(s, train=True)
                     loss_list = []
+                    
                     for i in range(self.action_num) :
                         ratio = torch.exp(log_probs[i] - old_log_probs[i])
                         surr1 = ratio * advantages
                         surr2 = torch.clamp(ratio, 1-self.eps_clip, 1+self.eps_clip) * advantages
-                        loss = -torch.min(surr1, surr2) + F.smooth_l1_loss(self.v(s) , td_target)
+                        loss = -torch.min(surr1, surr2) + F.smooth_l1_loss(self.get_value(s) , td_target)
                         loss_list.append(loss)
 
                     #TODO loss
@@ -242,6 +249,7 @@ class Agent(nn.Module):
                     
 # for testing
 if __name__ == '__main__':
+    warnings.filterwarnings('ignore', category=UserWarning)
     args = parse_opt()
     conf = dict(**args.__dict__)
     model = Agent(conf)
@@ -249,21 +257,21 @@ if __name__ == '__main__':
     print_interval = 20
     step = 20
 
-    for n_epi in range(10000):
+    for n_epi in tqdm(range(10000)):
         state = (torch.rand(1, 3, 32, 32), torch.rand(1, 32, 16, 16))
         state_prme = (torch.rand(1, 3, 32, 32), torch.rand(1, 32, 16, 16))
         r = 10
         done = False
-        while not done:
+        for tt in range(30):
             for t in range(step):
+                # print(n_epi, t, tt)
                 actions, action_probs = model.get_actions(state)
+                print(actions)
                 r = 10
                 model.put_data((state, actions, r, state_prme, action_probs, done))
 
                 score += r
-                if done:
-                    break
-
+                
             model.train_net()
 
         if n_epi%print_interval==0 and n_epi!=0:
