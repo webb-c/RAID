@@ -22,7 +22,7 @@ class Env():
         self.alpha: float = args["alpha"]
         self.size: int = 32
         self.epoch: int = 1
-        self.truncated_step = 10 # TODO get value from args
+        self.num_epoch = args['num_epoch']
 
         self.model_name: str = args["model_name"]
 
@@ -63,6 +63,10 @@ class Env():
         original_images_paths = glob.glob(f"images/{self.model_name}/origin/{self.mode}/*")
         perturbed_images_paths = glob.glob(f"images/{self.model_name}/adv/{self.mode}/*")
 
+        if not original_images_paths :
+            raise FileNotFoundError(f"Path not found Error (original_images_paths)")
+        if not perturbed_images_paths :
+            raise FileNotFoundError(f"Path not found Error (perturbed_images_paths)")
 
         original_images = original_images_paths
         perturbed_images = perturbed_images_paths
@@ -103,7 +107,7 @@ class Env():
             print(f"Current mode : {self.mode}")
             print(f"{len(permutation_list)} images succesfully loaded")
         else:
-            print(f"error")
+            raise FileNotFoundError(f"permutation dataset load Error")
 
 
     def _get_transform_image(self, image_path: str) -> torch.Tensor:
@@ -180,7 +184,7 @@ class Env():
         """
         y = index // self.size
         x = index % self.size
-        kernel_radius = int(self.size * std)
+        kernel_radius = int(self.size * std) + 1
         kernel_size = kernel_radius * 2 + 1
         considered_radius = kernel_radius * 2
 
@@ -193,7 +197,7 @@ class Env():
         
         # Denormalize
         considered_patch = (255 * self.state[0][channel, boundary[0]:boundary[2], boundary[1]:boundary[3]]).astype(np.uint8)
-
+        
         # Apply gaussian filter
         blurred_patch = cv.GaussianBlur(considered_patch, (kernel_size, kernel_size), 0)
 
@@ -213,10 +217,10 @@ class Env():
         output:
             - reward (float): action을 수행했을 때의 reward를 반환합니다. Reward는 image model의 confidence drift입니다.
         """
-        confidence_drift = confidence_score - self.prev_confidence_score
-        target_drift = confidence_drift[self.target_label]
-        non_target_drift = np.delete(confidence_drift, self.target_label)
-        result = target_drift - self.alpha * np.sum(non_target_drift)
+        confidence_score = confidence_score.T
+        prev_confidence_score = self.prev_confidence_score.T
+        target_drift = confidence_score[self.target_label] - prev_confidence_score[self.target_label]
+        result = self.alpha * target_drift
 
         return result
                 
@@ -253,9 +257,8 @@ class Env():
             (image: np.ndarray, feature_map: np.ndarray)
         """
         next = self._get_next_image_label()
-
+        self.epoch = 0
         if next == -1:
-            self.epoch += 1
             self._set_dataset()
             origin_image_tensor, perturbed_image_tensor, image_label = self._get_next_image_label()
         else:
@@ -293,13 +296,19 @@ class Env():
         state = (np.zeros(1), np.zeros(1))
         terminated = False
         truncated = False
+        self.epoch += 1
 
         # Defense image with action
         self._defense_image(channel, index, std)
 
         # Inference image, get new confidence score
-        # Question: _inference가 인자를 가져야 하나?
         confidence_score, feature_map = self._inference()
+
+        # Terminate condition
+        if np.argmax(confidence_score) == self.target_label:
+            terminated = True
+        elif self.epoch >= self.num_epoch:
+            truncated = True
 
         # Calculate confidence drift
         reward = self._get_reward(confidence_score)
@@ -308,5 +317,4 @@ class Env():
         self.state[1] = feature_map
         self.prev_confidence_score = confidence_score
 
-        return state, reward, terminated, truncated, None
-
+        return self.state, reward, terminated, truncated, None
