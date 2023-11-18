@@ -41,6 +41,8 @@ def parse_opt(known=False):
     parser.add_argument("-a", "--alpha", type=float, default=0.5, help="hyperparameter alpha for cal Reward")
     parser.add_argument("-name", "--model_name", type=str, default="mobilenet", help="attacked DNN model name")
     parser.add_argument("-dataset", "--dataset_name", type=str, default="CIFAR10", help="train dataset name")
+
+    parser.add_argument("-save", "--image_save", action='store_true', default=False, help="save step images")
     
     return parser.parse_known_args()[0] if known else parser.parse_args()
 
@@ -56,6 +58,7 @@ def main(conf):
     num_step = conf["num_step"] 
     mode = conf["mode"]
     print_interval = 100
+    save_interval = 500
     
     # Env, Agent setting
     env = Env(conf)
@@ -69,6 +72,8 @@ def main(conf):
         for episode in tqdm(range(num_episode)):
             epi_reward = 0
             state, _ = env.reset()
+            if conf['image_save'] and episode%save_interval==0:
+                manager.save_image(episode, 0, state[0]) # 변화 없는 이미지 = 0
             done = False
             for step in range(num_step):
                 actions, action_probs = agent.get_actions(state)
@@ -79,6 +84,8 @@ def main(conf):
                 reward = reward.item()
                 epi_reward += reward
                 state = state_prime
+                if conf['image_save'] and episode%save_interval==0:
+                    manager.save_image(episode, step+1, state[0])
                 if done : 
                     break
             loss = agent.train_net()
