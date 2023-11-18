@@ -60,6 +60,7 @@ def main(conf):
     # Env, Agent setting
     env = Env(conf)
     env.train()
+    env.set_log_path(manager.get_log_path()) # 동적인 인자이므로 init할 때 주지 않고 지금 줌
     agent = Agent(conf)
     
     # Train code
