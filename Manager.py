@@ -8,7 +8,7 @@ class Manager():
         self.time = self.now.strftime('%m-%d_%H%M%S')
         self.use = use
         if self.use : 
-            self.writer = SummaryWriter(f'./logs/{model_name}_{attack}/{time}')
+            self.writer = SummaryWriter(f'./logs/{model_name}_{attack}/{self.time}')
 
     def record(self, text, value, step):
         if self.use : 
