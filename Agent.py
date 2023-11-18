@@ -190,9 +190,9 @@ class Agent(nn.Module):
         data_with_adv = []
         for mini_batch in data:
             s, a, r, s_prime, done_mask, old_log_probs = mini_batch
-
-            td_target = r + self.gamma * self.get_value(s_prime) * done_mask
-            delta = td_target - self.get_value(s)
+            with torch.no_grad():
+                td_target = r + self.gamma * self.get_value(s_prime) * done_mask
+                delta = td_target - self.get_value(s)
             delta = delta.numpy()
 
             advantage_lst = []
@@ -214,10 +214,10 @@ class Agent(nn.Module):
         output: value -> torch.Tensor[float]
         """
         img, feature = state
-        with torch.no_grad():
-            agent_feature = self._backbone(img, feature)
-            x = self.shared_layer(agent_feature)
-            v = self.critic(x)
+
+        agent_feature = self._backbone(img, feature)
+        x = self.shared_layer(agent_feature)
+        v = self.critic(x)
         
         return v
     
