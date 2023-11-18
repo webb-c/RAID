@@ -25,6 +25,7 @@ class Env():
         self.num_epoch = args['num_epoch']
 
         self.model_name: str = args["model_name"]
+        self.log_path: str = None
 
         self.dataset: np.ndarray = None
 
@@ -245,6 +246,9 @@ class Env():
         if self.test_dataset is None:
             self._load_dataset()
         self._set_dataset()
+
+    def set_log_path(self, log_path:str) -> None:
+        self.log_path = log_path
 
     def reset(self) -> Tuple[Tuple[np.ndarray, np.ndarray], int]:
         """
