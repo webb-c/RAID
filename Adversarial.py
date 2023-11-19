@@ -1,4 +1,4 @@
-import torch
+import torch, os
 import numpy as np
 from torchvision import transforms, datasets
 from torchvision.models import mobilenet_v2
@@ -10,7 +10,7 @@ import advertorch.attacks as attacks
 from PIL import Image
 
 # adv dataset
-def make_adv_img(model, model_name):
+def make_adv_img(model, model_name, attack):
     device ='cuda'
     model = model.to(device).eval()
     
@@ -29,7 +29,7 @@ def make_adv_img(model, model_name):
     adv_file = []
     file_name = []
 
-    at = attacks.LinfPGDAttack(model, eps=6.0/255, nb_iter=7)
+    at = setAttack(attack, model)
 
     for x, y in tqdm(data_loader, 'images'):
         x = x.to(device)
@@ -75,17 +75,24 @@ def make_adv_img(model, model_name):
     train_size = int(0.6*len(file))
     val_size = int(0.2*len(file))
 
+    os.makedirs(f"./images/{model_name}_{attack}/origin/train", exist_ok=True)
+    os.makedirs(f"./images/{model_name}_{attack}/origin/test", exist_ok=True)
+    os.makedirs(f"./images/{model_name}_{attack}/origin/val", exist_ok=True)
+    os.makedirs(f"./images/{model_name}_{attack}/adv/train", exist_ok=True)
+    os.makedirs(f"./images/{model_name}_{attack}/adv/train", exist_ok=True)
+    os.makedirs(f"./images/{model_name}_{attack}/adv/train", exist_ok=True)
+
     for idx, (x, advx, name) in enumerate(zip(file[:train_size], adv_file[:train_size], file_name[:train_size])):
-        img_transform(x).save(f"./images/{model_name}/origin/train/{idx}_{name[0]}.png")
-        img_transform(advx).save(f"./images/{model_name}/adv/train/{idx}_{name[0]}_{name[1]}.png")
+        img_transform(x).save(f"./images/{model_name}_{attack}/origin/train/{idx}_{name[0]}.png")
+        img_transform(advx).save(f"./images/{model_name}_{attack}/adv/train/{idx}_{name[0]}_{name[1]}.png")
 
     for idx, (x, advx, name) in enumerate(zip(file[train_size:train_size+val_size], adv_file[train_size:train_size+val_size], file_name[train_size:train_size+val_size])):
-        img_transform(x).save(f"./images/{model_name}/origin/val/{idx}_{name[0]}.png")
-        img_transform(advx).save(f"./images/{model_name}/adv/val/{idx}_{name[0]}_{name[1]}.png")
+        img_transform(x).save(f"./images/{model_name}_{attack}/origin/val/{idx}_{name[0]}.png")
+        img_transform(advx).save(f"./images/{model_name}_{attack}/adv/val/{idx}_{name[0]}_{name[1]}.png")
 
     for idx, (x, advx, name) in enumerate(zip(file[train_size+val_size:], adv_file[train_size+val_size:], file_name[train_size+val_size:])):
-        img_transform(x).save(f"./images/{model_name}/origin/test/{idx}_{name[0]}.png")
-        img_transform(advx).save(f"./images/{model_name}/adv/test/{idx}_{name[0]}_{name[1]}.png")
+        img_transform(x).save(f"./images/{model_name}_{attack}/origin/test/{idx}_{name[0]}.png")
+        img_transform(advx).save(f"./images/{model_name}_{attack}/adv/test/{idx}_{name[0]}_{name[1]}.png")
 
 def load_model(model_name, path=None):
     if model_name == 'mobilenet':
@@ -197,12 +204,43 @@ def test_image():
     outputs = torch.argmax(pred, dim=1)
     print('adv image classification:','1', outputs.item())
 
+def setAttack(str_at, net, eps=6.0, iter=7):
+    e = eps/255.
+    n_way = 10
+    if str_at == "PGDL1":
+        return attacks.L1PGDAttack(net, eps=e, nb_iter=iter)
+    elif str_at == "PGDL2":
+        return attacks.L2PGDAttack(net, eps=e, nb_iter=iter)
+    elif str_at == "PGDLinf":
+        return attacks.LinfPGDAttack(net, eps=e, nb_iter=iter)
+    elif str_at == "FGSM":
+        return attacks.GradientSignAttack(net, eps=e)
+    elif str_at == "BIML2":
+        return attacks.L2BasicIterativeAttack(net, eps=e, nb_iter=iter)
+    elif str_at == "BIMLinf":
+        return attacks.LinfBasicIterativeAttack(net, eps=e, nb_iter=iter)
+    elif str_at == "MIFGSM":
+        return attacks.MomentumIterativeAttack(net, eps=e, nb_iter=iter) # 0.3, 40
+    elif str_at == "CnW":
+        return attacks.CarliniWagnerL2Attack(net, n_way, max_iterations=iter)
+    elif str_at == "EAD":
+        return attacks.ElasticNetL1Attack(net, n_way, max_iterations=iter)
+    elif str_at == "DDN":
+        return attacks.DDNL2Attack(net, nb_iter=iter)
+    elif str_at == "SinglePixel":
+        return attacks.SinglePixelAttack(net, max_pixels=iter)
+    elif str_at == "DeepFool":
+        return attacks.DeepfoolLinfAttack(net, n_way, eps=e, nb_iter=iter)
+    else:
+        print("wrong type Attack")
+        exit()
 
 if __name__ == "__main__":
     print('Execute Adversarial.py')
 
     model_name = 'mobilenet'
+    attack = 'FGSM'
     # pretrain_model()
     model = load_model(model_name, './models/mobilenet.pt')
-    make_adv_img(model, model_name)
+    make_adv_img(model, model_name, attack)
     # test_image()
