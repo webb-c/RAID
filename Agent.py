@@ -190,9 +190,10 @@ class Agent(nn.Module):
         data_with_adv = []
         for mini_batch in data:
             s, a, r, s_prime, done_mask, old_log_probs = mini_batch
-            with torch.no_grad():
-                td_target = r + self.gamma * self.get_value(s_prime) * done_mask
-                delta = td_target - self.get_value(s)
+            with torch.no_grad():                
+                td_target = r.view(-1, 1) + self.gamma * self.get_value(s_prime).view(-1, 1) * done_mask.view(-1, 1)
+                delta = td_target - self.get_value(s).view(-1, 1)
+                
             delta = delta.numpy()
 
             advantage_lst = []
@@ -273,6 +274,8 @@ class Agent(nn.Module):
         output: None or loss
         """
         loss = None
+        v_loss_list = []
+        policy_loss_list = []
         if self.buffer.is_full() :
             data = self.buffer.get_batch()
             data = self._calc_advantage(data)
@@ -283,21 +286,26 @@ class Agent(nn.Module):
                     old_log_probs = old_log_probs.transpose(0, 1)
                     actions, log_probs = self.get_actions(s, train=True)
                     loss_list = []
+
+                    v_loss = F.smooth_l1_loss(self.get_value(s) , td_target)
+                    v_loss_list.append(v_loss)
+                    # v loss를 반복적으로 업데이트 하고 있었음
                     
                     for i in range(self.action_num) :
-                        ratio = torch.exp(log_probs[i] - old_log_probs[i])
+                        ratio = torch.exp(log_probs[i] - old_log_probs[i]).view(-1, 1)
                         surr1 = ratio * advantages
                         surr2 = torch.clamp(ratio, 1-self.eps_clip, 1+self.eps_clip) * advantages
-                        loss = -torch.min(surr1, surr2) + F.smooth_l1_loss(self.get_value(s) , td_target)
-                        loss_list.append(loss)
+                        policy_loss = -torch.min(surr1, surr2)
+                        loss_list.append(policy_loss)
+                        policy_loss_list.append(policy_loss)
 
-                    #TODO loss
-                    loss = sum(loss_list)
+                    # policy loss + value loss
+                    loss = sum(loss_list) + v_loss
                     self.optimizer.zero_grad()
                     loss.mean().backward()
                     nn.utils.clip_grad_norm_(self.parameters(), 1.0)
                     self.optimizer.step()
                     self.optimization_step += 1
         
-        return loss
+        return loss, v_loss_list, policy_loss_list
                     

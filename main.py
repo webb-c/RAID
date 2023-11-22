@@ -59,7 +59,7 @@ def main(conf):
     num_step = conf["num_step"] 
     mode = conf["mode"]
     print_interval = 100
-    save_interval = 500
+    save_interval = 100
     
     # Env, Agent setting
     env = Env(conf)
@@ -89,16 +89,18 @@ def main(conf):
                     manager.save_image(episode, step+1, state[0])
                 if done : 
                     break
-            loss = agent.train_net()
+            loss, value_loss, policy_loss = agent.train_net()
             total_reward += epi_reward
             # record total_reward & avg_reward & loss for each episode
             manager.record(mode+"/total_reward", epi_reward, episode)
             manager.record(mode+"/avg_reward", (epi_reward/(step+1)), episode)
             if loss is not None :
                 manager.record(mode+"/loss", loss.mean().item(), episode)
+                manager.record(mode+"/value_loss", sum(value_loss).mean().item(), episode)
+                manager.record(mode+"/policy_loss", sum(policy_loss).mean().item(), episode)
             if episode % print_interval == 0 and step != 0:
-                print("\n# of episode :{}, avg reward : {:.2f}, total reward : {:.2f}".format(episode, 100*(epi_reward/print_interval), 100*epi_reward))
-                epi_reward = 0
+                print("\n# of episode :{}, avg reward : {:.2f}, total reward : {:.2f}".format(episode, total_reward/print_interval, total_reward))
+                total_reward = 0
     
     print("Train finish with,")
     prnt(conf)
