@@ -25,6 +25,7 @@ class Env():
         self.num_epoch = args['num_epoch']
 
         self.model_name: str = args["model_name"]
+        self.train_attack: str = args["train_attack"]
         self.log_path: str = None
 
         self.dataset: np.ndarray = None
@@ -61,8 +62,8 @@ class Env():
         """ 
         _load_dataset 함수는 self.mode에 맞는 original image, perturbed image, label을 불러와 [self.train_dataset, self.val_dataset, self.test_dataset] 중 self.mode에 해당하는 변수에 저장합니다.
         """
-        original_images_paths = glob.glob(f"images/{self.model_name}/origin/{self.mode}/*")
-        perturbed_images_paths = glob.glob(f"images/{self.model_name}/adv/{self.mode}/*")
+        original_images_paths = glob.glob(f"images/{self.model_name}_{self.train_attack}/origin/{self.mode}/*")
+        perturbed_images_paths = glob.glob(f"images/{self.model_name}_{self.train_attack}/adv/{self.mode}/*")
 
         if not original_images_paths :
             raise FileNotFoundError(f"Path not found Error (original_images_paths)")
@@ -116,7 +117,7 @@ class Env():
             return self.transform(img)
         
     def _get_class(self, image_name: str) -> int:
-        return int(image_name.split("_")[1].split(".")[0])
+        return int(image_name.split("_")[2].split(".")[0])
         
     def _load_model(self) -> torch.nn.Module:
         model_path = f"models/{self.model_name}.pt"

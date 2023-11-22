@@ -41,6 +41,7 @@ def parse_opt(known=False):
     parser.add_argument("-a", "--alpha", type=float, default=0.5, help="hyperparameter alpha for cal Reward")
     parser.add_argument("-name", "--model_name", type=str, default="mobilenet", help="attacked DNN model name")
     parser.add_argument("-dataset", "--dataset_name", type=str, default="CIFAR10", help="train dataset name")
+    parser.add_argument("-attack", "--train_attack", type=str, default="PGDLinf", help="attack type to make attacked images")
 
     parser.add_argument("-save", "--image_save", action='store_true', default=False, help="save step images")
     
