@@ -5,9 +5,12 @@ import torch
 from torchvision.transforms import transforms
 
 import glob
-from typing import Union, Tuple
+from typing import Union, Tuple, List
 
 from utils import register_single_hook, return_feature_map, load_model, hook_fn
+
+from defense.LocalGaussianBlurringDefense import LocalGaussianBlurringDefense as LGB
+from defense.MultiAugmentationDefense import MultiAugmentation as MA
 
 class Env():
     def __init__(self,
@@ -43,6 +46,7 @@ class Env():
         self.layer_idx = args["layer_idx"]
 
         self.image_model: torch.nn.Module = self._load_model()
+        self.defense = LGB(args)
         self._load_dataset()
 
     # return permutation list
@@ -175,41 +179,11 @@ class Env():
 
         return (confidence_score, feature_map)
 
-    def _defense_image(self, channel: int, index: int, std: float) -> None:
-        """
-        _defense_image 함수는 주어진 target pixel(index) 주위에 std만큼의 gaussian blur를 적용합니다.
+    def _defense_image(self, action : List) -> None:
 
-        input:
-            - channel (int): 변형할 이미지의 channel (0: R, 1: G, 2: B)
-            - index (int): 변형할 image의 index vector
-            - std (float): defense perturbation의 standard deviation
-        """
-        y = index // self.size
-        x = index % self.size
-        kernel_radius = int(self.size * std) + 1
-        kernel_size = kernel_radius * 2 + 1
-        considered_radius = kernel_radius * 2
-
-        # Patch coordinate with form (y1, x1, y2, x2)
-        boundary = (
-            max(y - considered_radius, 0),
-            max(x - considered_radius, 0),
-            min(y + considered_radius, self.size - 1),
-            min(x + considered_radius, self.size - 1))
+        new_image = self.defense(self.state[0], action)
+        self.state[0] = new_image
         
-        # Denormalize
-        considered_patch = (255 * self.state[0][channel, boundary[0]:boundary[2], boundary[1]:boundary[3]]).astype(np.uint8)
-        
-        # Apply gaussian filter
-        blurred_patch = cv.GaussianBlur(considered_patch, (kernel_size, kernel_size), 0)
-
-        # Normalize
-        blurred_patch = blurred_patch.astype(float) / 255
-
-        # Overlay blurred patch to original image
-        self.state[0][channel, boundary[0]:boundary[2], boundary[1]:boundary[3]] = blurred_patch
-        
-
     def _get_reward(self, confidence_score: np.ndarray) -> float:
         """
         _get_reward 함수는 이미지 모델의 추론에 대한 confidence drift의 정도를 반환합니다.
@@ -297,23 +271,28 @@ class Env():
             - truncated (bool): agent가 episode 도중 truncation condition에 의해 중단되었는지의 여부입니다.
             - info (None): None을 반환합니다.
         """
-        channel, index, std = action
+
         state = (np.zeros(1), np.zeros(1))
         terminated = False
         truncated = False
         self.epoch += 1
 
         # Defense image with action
-        self._defense_image(channel, index, std)
+        self._defense_image(action)
 
         # Inference image, get new confidence score
         confidence_score, feature_map = self._inference()
 
-        # Terminate condition
+       # Terminate condition
         if np.argmax(confidence_score) == self.target_label:
             terminated = True
+            reward = confidence_score.T[self.target_label]
         elif self.epoch >= self.num_epoch:
             truncated = True
+            reward = np.array([-1])
+        else:
+            # Calculate confidence drift
+            reward = self._get_reward(confidence_score)
 
         # Calculate confidence drift
         reward = self._get_reward(confidence_score)
