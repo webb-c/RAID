@@ -44,6 +44,10 @@ def parse_opt(known=False):
     parser.add_argument("-attack", "--train_attack", type=str, default="PGDLinf", help="attack type to make attacked images")
 
     parser.add_argument("-save", "--image_save", action='store_true', default=False, help="save step images")
+    parser.add_argument("-imgheight", "--image_height", type=int, default=32, help="image height")
+    parser.add_argument("-imgwidth", "--image_width", type=int, default=32, help="image width")
+
+    
     
     return parser.parse_known_args()[0] if known else parser.parse_args()
 
