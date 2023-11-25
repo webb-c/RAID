@@ -118,6 +118,9 @@ class Agent(nn.Module):
         
         self.optimizer = optim.Adam(self.parameters(), lr=self.lr)
         self.optimization_step = 0
+
+        # parameter for cuda
+        self.available_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     
     def _split_model(self):
@@ -190,11 +193,18 @@ class Agent(nn.Module):
         data_with_adv = []
         for mini_batch in data:
             s, a, r, s_prime, done_mask, old_log_probs = mini_batch
+
+            # calc_advantage는 train에서만 사용하므로 gpu로 보냄
+            r = r.to(self.available_device)
+            done_mask = done_mask.to(self.available_device)
+
+            # get_value 내부에서 train인지 eval인지 모르므로 train인지 알려줘야됨
             with torch.no_grad():                
-                td_target = r.view(-1, 1) + self.gamma * self.get_value(s_prime).view(-1, 1) * done_mask.view(-1, 1)
-                delta = td_target - self.get_value(s).view(-1, 1)
-                
-            delta = delta.numpy()
+                td_target = r.view(-1, 1) + self.gamma * self.get_value(s_prime, train=True).view(-1, 1) * done_mask.view(-1, 1)
+                delta = td_target - self.get_value(s, train=True).view(-1, 1)
+            
+            # delta는 advantage를 구하기 위한 값이므로 cpu로 보냄
+            delta = delta.cpu().numpy()
 
             advantage_lst = []
             advantage = 0.0
@@ -202,19 +212,25 @@ class Agent(nn.Module):
                 advantage = self.gamma * self.lmbda * advantage + delta_t[0]
                 advantage_lst.append([advantage])
             advantage_lst.reverse()
-            advantage = torch.tensor(advantage_lst, dtype=torch.float)
+            # advantage는 train에서만 사용하므로 gpu로 보냄
+            advantage = torch.tensor(advantage_lst, dtype=torch.float).to(self.available_device)
             data_with_adv.append((s, a, r, s_prime, done_mask, old_log_probs, td_target, advantage))
 
         return data_with_adv
     
     
-    def get_value(self, state):
+    def get_value(self, state, train = False):
         """ object: input을 받아, 내부에서 _backbone 함수를 호출한 뒤 value를 반환합니다.
         *get_value는 Advantage를 계산할 때, 항상 batch단위로 호출되기 때문에 output이 Tensor형태입니다.
-        input: state -> Tuple[torch.Tensor, torch.Tensor]
+        input: state -> Tuple[torch.Tensor, torch.Tensor], train -> bool
         output: value -> torch.Tensor[float]
         """
         img, feature = state
+
+        # train이면 gpu로 보냄 
+        if train:
+            img = img.to(self.available_device)
+            feature = feature.to(self.available_device)
 
         agent_feature = self._backbone(img, feature)
         x = self.shared_layer(agent_feature)
@@ -239,6 +255,8 @@ class Agent(nn.Module):
                 channel_dist, idx_dist, noise_dist = self._policy(agent_feature, softmax_dim=0)
         else :
             self.train()
+            img = img.to(self.available_device)
+            feature = feature.to(self.available_device)
             agent_feature = self._backbone(img, feature)
             channel_dist, idx_dist, noise_dist = self._policy(agent_feature, softmax_dim=1, batch=True)
         
@@ -277,17 +295,18 @@ class Agent(nn.Module):
         v_loss_list = []
         policy_loss_list = []
         if self.buffer.is_full() :
+            self = self.to(self.available_device)
             data = self.buffer.get_batch()
             data = self._calc_advantage(data)
 
             for _ in range(self.K_epochs): 
                 for mini_batch in data:
                     s, a, r, s_prime, done_mask, old_log_probs, td_target, advantages = mini_batch
-                    old_log_probs = old_log_probs.transpose(0, 1)
+                    old_log_probs = old_log_probs.transpose(0, 1).to(self.available_device)
                     actions, log_probs = self.get_actions(s, train=True)
                     loss_list = []
 
-                    v_loss = F.smooth_l1_loss(self.get_value(s) , td_target)
+                    v_loss = F.smooth_l1_loss(self.get_value(s, train=True) , td_target)
                     v_loss_list.append(v_loss)
                     # v loss를 반복적으로 업데이트 하고 있었음
                     
@@ -306,6 +325,9 @@ class Agent(nn.Module):
                     nn.utils.clip_grad_norm_(self.parameters(), 1.0)
                     self.optimizer.step()
                     self.optimization_step += 1
+
+            # episode 시작하기 위해서 cpu로 보냄
+            self.cpu()
         
         return loss, v_loss_list, policy_loss_list
                     
