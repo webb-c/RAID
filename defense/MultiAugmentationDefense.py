@@ -9,6 +9,11 @@ from preprocess.VerticalShiftPreprocess import VerticalShiftPreprocess
 from preprocess.HorizontalShiftPreprocess import HorizontalShiftPreprocess
 from preprocess.ResizePreprocess import ResizePreprocess
 
+import torch.nn as nn
+import torch.nn.functional as F
+
+from torch.distributions import Categorical
+
 class MultiAugmentation(DefenseBase):
 
     def __init__(self, config) -> None:
@@ -34,9 +39,9 @@ class MultiAugmentation(DefenseBase):
 
         match preprocessing_index:
             case 0:
-                preprocessed_image = self.rotate_preprocess.process(image, 10)
+                preprocessed_image = self.rotate_preprocess.process(image, 3)
             case 1:
-                preprocessed_image = self.rotate_preprocess.process(image, -10)
+                preprocessed_image = self.rotate_preprocess.process(image, -3)
             case 2:
                 preprocessed_image = self.brightness_control_preprocess.process(image, 0.05)
             case 3:
@@ -46,17 +51,48 @@ class MultiAugmentation(DefenseBase):
             case 5:
                 preprocessed_image = self.horizontal_flip_preprocess.process(image)
             case 6:
-                preprocessed_image = self.vertical_shift_preprocess.process(image, 0.1)
+                preprocessed_image = self.vertical_shift_preprocess.process(image, 0.05)
             case 7:
-                preprocessed_image = self.vertical_shift_preprocess.process(image, -0.1)
+                preprocessed_image = self.vertical_shift_preprocess.process(image, -0.05)
             case 8:
-                preprocessed_image = self.horizontal_shift_preprocess.process(image, 0.1)
+                preprocessed_image = self.horizontal_shift_preprocess.process(image, 0.05)
             case 9:
-                preprocessed_image = self.horizontal_shift_preprocess.process(image, -0.1)
+                preprocessed_image = self.horizontal_shift_preprocess.process(image, -0.05)
             case 10:
-                preprocessed_image = self.resize_preprocess.process(image, 0.9)
+                preprocessed_image = self.resize_preprocess.process(image, 0.97)
 
 
         return preprocessed_image
 
+
+class MultiAugmentationPolicy(nn.Module):
+
+    def __init__(self):
+        super(MultiAugmentationPolicy, self).__init__()
+
+        self.index = nn.Sequential(
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 11),
+        )
+
+        self.action_num = 1
+
+    def policy(self, x, batch=False):
+        index_out = self.index(x)
+        return index_out
+    
+    def get_actions(self, x, softmax_dim=0):
+        index_out = x
+
+        prob_index = F.softmax(index_out, dim=softmax_dim)
+
+        dist_index = Categorical(prob_index)
+
+        a_index = dist_index.sample()
+        log_prob_index = dist_index.log_prob(a_index)
+
+        return (a_index, ), (log_prob_index, )
 

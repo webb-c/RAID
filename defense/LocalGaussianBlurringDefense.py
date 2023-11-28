@@ -2,6 +2,12 @@ from defense.DefenseBase import DefenseBase
 import numpy as np
 import cv2 as cv
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+from torch.distributions import Categorical, Normal
+
 class LocalGaussianBlurringDefense(DefenseBase):
 
     def __init__(self, config) -> None:
@@ -46,3 +52,52 @@ class LocalGaussianBlurringDefense(DefenseBase):
         return image
 
 
+class LocalGaussianBlurringDefensePolicy(nn.Module):
+
+    def __init__(self):
+        super(LocalGaussianBlurringDefensePolicy, self).__init__()
+
+        self.channel = nn.Linear(128, 3) # discrete action : select channel
+        self.index = nn.Linear(128, 2)   # continuous action1 : select index num
+        self.noise = nn.Linear(128, 2)   # continuous action2 : select noise std
+
+        self.action_num = 3
+
+    def policy(self, x, batch=False):
+        channel_out = self.channel(x)
+        index_out = self.channel(x)
+        noise_out = self.channel(x)
+
+        if batch:
+            index_out = index_out.transpose(1, 0)
+            noise_out = noise_out.transpose(1, 0)
+
+        return (channel_out, index_out, noise_out)
+    
+    def get_actions(self, x, softmax_dim=0):
+        channel_out, index_out, noise_out = x
+
+        prob_channel = F.softmax(channel_out, dim=softmax_dim)
+        dist_channel = Categorical(prob_channel)
+
+        mu_index = torch.sigmoid(index_out[0])
+        std_index = F.softplus(index_out[1])
+        dist_index = Normal(mu_index, std_index)
+
+        mu_noise = torch.sigmoid(noise_out[0])
+        std_noise = F.softplus(noise_out[1])
+        dist_noise = Normal(mu_noise, std_noise)
+
+
+        a_channel = dist_channel.sample()
+        log_prob_channel = dist_channel.log_prob(a_channel)
+
+        a_index = dist_index.sample()
+        log_prob_index = dist_index.log_prob(a_index)
+        a_index = torch.clamp(a_index*1023, 0, 1023).int()
+
+        a_noise = dist_noise.sample()
+        log_prob_noise = dist_noise.log_prob(a_noise)
+        a_noise = torch.clamp(a_noise*0.25, 0, 0.25).int()
+
+        return (a_channel, a_index, a_noise), (log_prob_channel, log_prob_index, log_prob_noise)

@@ -10,11 +10,11 @@ from typing import Union, Tuple, List
 from utils import register_single_hook, return_feature_map, load_model, hook_fn
 
 from defense.LocalGaussianBlurringDefense import LocalGaussianBlurringDefense as LGB
-from defense.MultiAugmentationDefense import MultiAugmentation as MA
 
 class Env():
     def __init__(self,
-                 args: dict = {'learning_rate': 0.0003, 'gamma': 0.9, 'lmbda': 0.9, 'alpha': 0.5, 'eps_clip': 0.2, 'num_epoch': 10, 'num_step': 50, 'rollout_len': 3, 'buffer_size': 10, 'minibatch_size': 32, 'mode': 'train', 'model_name': 'mobilenet', 'dataset_name': 'CIFAR10', 'layer_idx': 4}
+                 args: dict = {'learning_rate': 0.0003, 'gamma': 0.9, 'lmbda': 0.9, 'alpha': 0.5, 'eps_clip': 0.2, 'num_epoch': 10, 'num_step': 50, 'rollout_len': 3, 'buffer_size': 10, 'minibatch_size': 32, 'mode': 'train', 'model_name': 'mobilenet', 'dataset_name': 'CIFAR10', 'layer_idx': 4},
+                 defense = LGB
                  ) -> None:
         
         self.state: list[np.ndarray] = None # current state [image, featuremap]
@@ -46,7 +46,9 @@ class Env():
         self.layer_idx = args["layer_idx"]
 
         self.image_model: torch.nn.Module = self._load_model()
-        self.defense = LGB(args)
+
+        # defense 방법 설정
+        self.defense = defense(args) 
         self._load_dataset()
 
     # return permutation list
@@ -181,7 +183,7 @@ class Env():
 
     def _defense_image(self, action : List) -> None:
 
-        new_image = self.defense(self.state[0], action)
+        new_image = self.defense.apply(self.state[0], action)
         self.state[0] = new_image
         
     def _get_reward(self, confidence_score: np.ndarray) -> float:
@@ -283,19 +285,16 @@ class Env():
         # Inference image, get new confidence score
         confidence_score, feature_map = self._inference()
 
+        reward = self._get_reward(confidence_score)
+
        # Terminate condition
         if np.argmax(confidence_score) == self.target_label:
             terminated = True
-            reward = confidence_score.T[self.target_label]
+            reward += confidence_score.T[self.target_label]
         elif self.epoch >= self.num_epoch:
             truncated = True
-            reward = np.array([-1])
-        else:
-            # Calculate confidence drift
-            reward = self._get_reward(confidence_score)
-
-        # Calculate confidence drift
-        reward = self._get_reward(confidence_score)
+            reward += np.array([-1])
+            
 
         # Update attributes
         self.state[1] = feature_map
