@@ -84,9 +84,9 @@ class RolloutBuffer:
         return flag
 
 
-class Agent(nn.Module):
-    def __init__(self, config):
-        super(Agent, self).__init__()
+class PPO(nn.Module):
+    def __init__(self, config, policy):
+        super(PPO, self).__init__()
         self.buffer = RolloutBuffer(config["buffer_size"], config["minibatch_size"])
         # parameter setting
         ### parameter for PPO
@@ -99,7 +99,6 @@ class Agent(nn.Module):
         self.K_epochs = config["K_epochs"]               
         self.minibatch_size = config["minibatch_size"]   # M
         ### parameter for RAID
-        self.action_num = 3
         self.layer_idx = config["layer_idx"]
         self.alpha = config["alpha"]
         self.model_name = config["model_name"]
@@ -111,10 +110,9 @@ class Agent(nn.Module):
             nn.Linear(640, 128),
             nn.ReLU()
         )
-        self.channel = nn.Linear(128, 3) # discrete action : select channel
-        self.index = nn.Linear(128, 2)   # continuous action1 : select index num
-        self.noise = nn.Linear(128, 2)   # continuous action2 : select noise std
-        self.critic = nn.Linear(128, 1)  # value network
+        self.critic = nn.Linear(128, 1)
+        self.policy_network = policy()
+        self.action_num = self.policy_network.action_num
         
         self.optimizer = optim.Adam(self.parameters(), lr=self.lr)
         self.optimization_step = 0
@@ -158,34 +156,12 @@ class Agent(nn.Module):
     
         
     def _policy(self, agent_feature, softmax_dim=0, batch=False):
-        """ object: backbone을 통과하여 얻어진 feature를 각각의 policy layer를 통과시켜 action의 distribution을 계산해 반환합니다."""
+        """ object: backbone을 통과하여 얻어진 feature를 각각의 policy layer를 통과시켜 head 까지만 계산해 반환합니다."""
         x = self.shared_layer(agent_feature)
         
-        x1 = self.channel(x)
-        x2 = self.index(x)
-        x3 = self.noise(x)
-        if batch :
-            x2 = x2.transpose(0, 1)
-            x3 = x3.transpose(0, 1)
+        x = self.policy_network.policy(x, batch=batch)
         
-        channel_prob = F.softmax(x1, dim=softmax_dim)
-        try:
-            channel_dist = Categorical(channel_prob)
-        except Exception as e:
-            print(x1)
-            print(channel_prob)
-            print(channel_dist)
-            
-        
-        idx_mu = torch.sigmoid(x2[0])
-        idx_std = F.softplus(x2[1])
-        idx_dist = Normal(idx_mu, idx_std)
-        
-        noise_mu = torch.sigmoid(x3[0])
-        noise_std = F.softplus(x3[1])
-        noise_dist = Normal(noise_mu, noise_std)
-        
-        return channel_dist, idx_dist, noise_dist
+        return x
     
     
     def _calc_advantage(self, data):
@@ -252,26 +228,17 @@ class Agent(nn.Module):
             feature = torch.tensor(feature)
             with torch.no_grad():
                 agent_feature = self._backbone(img, feature)
-                channel_dist, idx_dist, noise_dist = self._policy(agent_feature, softmax_dim=0)
+                output = self._policy(agent_feature, softmax_dim=0)
         else :
             self.train()
             img = img.to(self.available_device)
             feature = feature.to(self.available_device)
             agent_feature = self._backbone(img, feature)
-            channel_dist, idx_dist, noise_dist = self._policy(agent_feature, softmax_dim=1, batch=True)
+            output = self._policy(agent_feature, softmax_dim=1, batch=True)
         
-        ch_a = channel_dist.sample()
-        ch_log_prob = channel_dist.log_prob(ch_a)
+        actions, action_probs = self.policy_network.get_actions(output)
         
-        idx_a = idx_dist.sample()
-        idx_log_prob = idx_dist.log_prob(idx_a)
-        idx_a = torch.clamp(idx_a*1023, 0, 1023).int()
-        
-        std_a = noise_dist.sample()
-        noise_log_prob = noise_dist.log_prob(std_a)
-        std_a = torch.clamp(std_a*0.25, 0, 0.25)
-        
-        return (ch_a, idx_a, std_a), (ch_log_prob, idx_log_prob, noise_log_prob)
+        return actions, action_probs
 
 
     def put_data(self, transition):

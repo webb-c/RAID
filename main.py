@@ -2,13 +2,17 @@ import warnings
 import argparse
 from tqdm import tqdm
 from pyprnt import prnt
-from Agent import Agent
+from agent.PPO import PPO
+from agent.DQN import DQN
 from Environment import Env
 from Manager import Manager
 from datetime import datetime
 
-from defense.LocalGaussianBlurringDefense import LocalGaussianBlurringDefense as LGB
-from defense.MultiAugmentationDefense import MultiAugmentation as MA
+from defense.LocalGaussianBlurringDefense import LocalGaussianBlurringDefense, LocalGaussianBlurringDefensePolicy
+from defense.MultiAugmentationDefense import MultiAugmentation, MultiAugmentationPolicy
+
+from train_methods.PPOTrainer import PPOTrainer
+from train_methods.DQNTrainer import DQNTrainer
 
 import copy
 
@@ -64,59 +68,23 @@ def main(conf):
     prnt(conf)
     
     # Hyper-parameter
-    num_episode = conf["num_episode"]
-    num_step = conf["num_step"] 
     mode = conf["mode"]
-    print_interval = 100
-    save_interval = 100
+
     
     # Env, Agent setting
-    agent = Agent(conf)
-    env = Env(conf, LGB)
-    env.train()
-    env.set_log_path(manager.get_log_path()) # 동적인 인자이므로 init할 때 주지 않고 지금 줌
+    env = Env(conf, MultiAugmentation)
+    agent = PPO(conf, MultiAugmentationPolicy)
+    trainer = PPOTrainer(agent, env, conf, manager)
     
     # Train code
     if mode == "train" : 
-        total_reward = 0
-        for episode in tqdm(range(num_episode)):
-            epi_reward = 0
-            state, _ = env.reset()
-            if conf['image_save'] and episode%save_interval==0:
-                manager.save_image(episode, 0, state[0]) # 변화 없는 이미지 = 0
-            done = False
-            for step in range(num_step):
-                actions, action_probs = agent.get_actions(state)
-                state_prime, reward, terminated, truncated, info = env.step(actions)
-                if terminated or truncated :
-                    done = True
-                agent.put_data((state, actions, reward, state_prime, action_probs, done))
-                reward = reward.item()
-                epi_reward += reward
-                state = state_prime
-                if conf['image_save'] and episode%save_interval==0:
-                    manager.save_image(episode, step+1, state[0])
-                if done : 
-                    break
-            total_reward += epi_reward
-            # record total_reward & avg_reward & loss for each episode
-            manager.record(mode+"/total_reward", epi_reward, episode)
-            manager.record(mode+"/avg_reward", (epi_reward/(step+1)), episode)
-
-            loss, value_loss, policy_loss = agent.train_net()
         
-            if loss is not None :
-                manager.record(mode+"/loss", loss.mean(), episode)
-                manager.record(mode+"/value_loss", sum(value_loss).mean().item(), episode)
-                manager.record(mode+"/policy_loss", sum(policy_loss).mean().item(), episode)
-            if episode % print_interval == 0 and step != 0:
-                print("\n# of episode :{}, avg reward : {:.2f}, total reward : {:.2f}".format(episode, total_reward/print_interval, total_reward))
-                total_reward = 0
-    
-    print("Train finish with,")
-    prnt(conf)
-    print("Start:\t", manager.get_time().strftime('%m-%d %H:%M:%S'))
-    print("End:\t", datetime.now().strftime('%m-%d %H:%M:%S'))
+        trainer.train()
+            
+        print("Train finish with,")
+        prnt(conf)
+        print("Start:\t", manager.get_time().strftime('%m-%d %H:%M:%S'))
+        print("End:\t", datetime.now().strftime('%m-%d %H:%M:%S'))
 
 
 if __name__ == "__main__":
