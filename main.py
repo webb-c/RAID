@@ -7,6 +7,11 @@ from Environment import Env
 from Manager import Manager
 from datetime import datetime
 
+from defense.LocalGaussianBlurringDefense import LocalGaussianBlurringDefense as LGB
+from defense.MultiAugmentationDefense import MultiAugmentation as MA
+
+import copy
+
 def str2bool(v):
     """ object: command line 인자 중 bool 타입을 판별하기 위한 함수입니다."""
     if isinstance(v, bool):
@@ -66,10 +71,10 @@ def main(conf):
     save_interval = 100
     
     # Env, Agent setting
-    env = Env(conf)
+    agent = Agent(conf)
+    env = Env(conf, LGB)
     env.train()
     env.set_log_path(manager.get_log_path()) # 동적인 인자이므로 init할 때 주지 않고 지금 줌
-    agent = Agent(conf)
     
     # Train code
     if mode == "train" : 
@@ -93,13 +98,15 @@ def main(conf):
                     manager.save_image(episode, step+1, state[0])
                 if done : 
                     break
-            loss, value_loss, policy_loss = agent.train_net()
             total_reward += epi_reward
             # record total_reward & avg_reward & loss for each episode
             manager.record(mode+"/total_reward", epi_reward, episode)
             manager.record(mode+"/avg_reward", (epi_reward/(step+1)), episode)
+
+            loss, value_loss, policy_loss = agent.train_net()
+        
             if loss is not None :
-                manager.record(mode+"/loss", loss.mean().item(), episode)
+                manager.record(mode+"/loss", loss.mean(), episode)
                 manager.record(mode+"/value_loss", sum(value_loss).mean().item(), episode)
                 manager.record(mode+"/policy_loss", sum(policy_loss).mean().item(), episode)
             if episode % print_interval == 0 and step != 0:
