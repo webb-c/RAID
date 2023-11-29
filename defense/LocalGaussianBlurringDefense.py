@@ -65,8 +65,8 @@ class LocalGaussianBlurringDefensePolicy(nn.Module):
 
     def policy(self, x, batch=False):
         channel_out = self.channel(x)
-        index_out = self.channel(x)
-        noise_out = self.channel(x)
+        index_out = self.index(x)
+        noise_out = self.noise(x)
 
         if batch:
             index_out = index_out.transpose(1, 0)
