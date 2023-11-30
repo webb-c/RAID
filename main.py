@@ -53,7 +53,8 @@ def parse_opt(known=False):
     parser.add_argument("-dataset", "--dataset_name", type=str, default="CIFAR10", help="train dataset name")
     parser.add_argument("-attack", "--train_attack", type=str, default="PGDLinf", help="attack type to make attacked images")
 
-    parser.add_argument("-save", "--image_save", action='store_true', default=False, help="save step images")
+    parser.add_argument("-save", "--image_save", type=str2bool, default=False, help="save step images")
+    parser.add_argument("-log", "--use_logger", type=str2bool, default=True, help="logging loss and reward")
     parser.add_argument("-imgheight", "--image_height", type=int, default=32, help="image height")
     parser.add_argument("-imgwidth", "--image_width", type=int, default=32, help="image width")
 
@@ -81,7 +82,7 @@ def get_instance(class_name, *args, **kwargs):
 #TODO val / test 모드 전환
 def main(conf):
     """ object: PPO 알고리즘을 사용하여 Attacked Image를 defense하는 policy를 Agent에게 학습시킵니다."""
-    manager = Manager(use=True)
+    manager = Manager(use=conf["use_logger"])
     defense_dict = dict(
         LocalGaussianBlurringDefense=["LocalGaussianBlurringDefense", "LocalGaussianBlurringDefensePolicy"],
         MultiAugmentationDefense=["MultiAugmentation", "MultiAugmentationPolicy"],
