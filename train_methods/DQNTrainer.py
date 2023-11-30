@@ -26,6 +26,8 @@ class DQNTrainer(TrainerBase):
 
         total_reward = 0
         for episode in tqdm(range(num_episode)):
+            if episode % q_target_interval == 0:
+                q_target = copy.deepcopy(self.agent)
             epi_reward = 0
             state, _ = self.env.reset()
             if self.conf['image_save'] and episode%save_interval==0:
