@@ -81,7 +81,7 @@ def get_instance(class_name, *args, **kwargs):
 #TODO val / test 모드 전환
 def main(conf):
     """ object: PPO 알고리즘을 사용하여 Attacked Image를 defense하는 policy를 Agent에게 학습시킵니다."""
-    manager = Manager(use=False)
+    manager = Manager(use=True)
     defense_dict = dict(
         LocalGaussianBlurringDefense=["LocalGaussianBlurringDefense", "LocalGaussianBlurringDefensePolicy"],
         MultiAugmentationDefense=["MultiAugmentation", "MultiAugmentationPolicy"],

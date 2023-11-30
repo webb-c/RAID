@@ -1,3 +1,4 @@
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Categorical
@@ -17,7 +18,7 @@ class HighFrequencyDrop(DefenseBase):
             - action (List[int]) : 반지름
         """
         preprocessed_image = get_filtered_image(image, r=action)
-        
+        preprocessed_image = preprocessed_image.astype(np.float32)
         return preprocessed_image
 
 
