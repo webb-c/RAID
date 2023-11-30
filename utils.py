@@ -1,6 +1,12 @@
 import torch
 import torch.nn as nn
 from torchvision.models import mobilenet_v2
+import numpy as np
+from matplotlib import pyplot as plt
+import numpy as np
+from PIL import Image
+import torch
+from torchvision.transforms import transforms
 
 def hook_fn(module, input, output):
     module.output = output
@@ -90,3 +96,63 @@ def print_nested_info(obj, depth=0):
             print_nested_info(obj[0], depth + 1)
     else:
         print(f"Depth {depth}: Element type = {type(obj)}")
+
+
+def image_to_frequency(image):
+    ft = np.fft.fft2(image)
+    ft_shift = np.fft.fftshift(ft)
+    magnitude_spectrum = 20*np.log(np.abs(ft_shift))
+    return ft_shift, magnitude_spectrum
+
+
+def frequency_to_image(frequency):
+    ft = np.fft.ifftshift(frequency)
+    image_back = np.fft.ifft2(ft)
+    image = np.abs(image_back)
+    return image
+
+
+def color_image_to_frequency(image):
+    """object: 입력 이미지를 frequency domain으로 변환합니다.
+        - input: (3, 32, 32) <class 'numpy.ndarry'>"""
+    red_tf, red_m = image_to_frequency(image[0,:,:])
+    green_tf, green_m = image_to_frequency(image[1,:,:])
+    blue_tf, blue_m = image_to_frequency(image[2,:,:])
+    frequency = [red_tf, green_tf, blue_tf]
+    magnitude = [red_m, green_m, blue_m]
+    return frequency, magnitude
+
+
+def color_frequency_to_image(frequency):
+    """object: frequency domain이미지를 원본 이미지 domain으로 변환합니다."""
+    red = frequency_to_image(frequency[0])
+    green = frequency_to_image(frequency[1])
+    blue = frequency_to_image(frequency[2])
+    image = np.stack((red, green, blue), axis=0)
+    return image
+
+
+def create_circular_mask(h, w, radius=None, center=None,):
+    if center is None:  # use the middle of the image
+        center = (int(w / 2), int(h / 2))
+    if radius is None:  # use the smallest distance between the center and image walls
+        radius = min(center[0], center[1], w - center[0], h - center[1])
+
+    Y, X = np.ogrid[:h, :w]
+    dist_from_center = np.sqrt((X - center[0])**2 + (Y - center[1])**2)
+
+    mask = dist_from_center <= radius
+    return mask
+
+
+def get_filtered_image(image, r):
+    origin_image = torch.tensor(image)
+    c, w, h = origin_image.shape
+    mask = create_circular_mask(h, w, radius=r)
+    frequency, magnitude = color_image_to_frequency(origin_image)
+    masked_frequency = []
+    for ft in frequency:
+        f_masked = ft * mask
+        masked_frequency.append(f_masked)
+    next_image = color_frequency_to_image(masked_frequency)
+    return next_image

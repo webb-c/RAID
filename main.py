@@ -64,7 +64,7 @@ def parse_opt(known=False):
 #TODO val / test 모드 전환
 def main(conf):
     """ object: PPO 알고리즘을 사용하여 Attacked Image를 defense하는 policy를 Agent에게 학습시킵니다."""
-    manager = Manager(use=True)
+    manager = Manager(use=False)
     prnt(conf)
     
     # Hyper-parameter
