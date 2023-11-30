@@ -6,7 +6,7 @@ from defense.DefenseBase import DefenseBase
 from utils import get_filtered_image
 
 
-class HighFrequencyDropDefense(DefenseBase):
+class HighFrequencyDrop(DefenseBase):
     def __init__(self, config) -> None:
         self.config = config
     
