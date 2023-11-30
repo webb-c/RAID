@@ -10,6 +10,7 @@ from datetime import datetime
 
 from defense.LocalGaussianBlurringDefense import LocalGaussianBlurringDefense, LocalGaussianBlurringDefensePolicy
 from defense.MultiAugmentationDefense import MultiAugmentation, MultiAugmentationPolicy
+from defense.HighFrequencyDropDefense import HighFrequencyDrop, HighFrequencyDropPolicy
 
 from train_methods.PPOTrainer import PPOTrainer
 from train_methods.DQNTrainer import DQNTrainer
@@ -56,25 +57,52 @@ def parse_opt(known=False):
     parser.add_argument("-imgheight", "--image_height", type=int, default=32, help="image height")
     parser.add_argument("-imgwidth", "--image_width", type=int, default=32, help="image width")
 
-    
+    parser.add_argument("-learn", "--learn_method", type=str, default="PPO", help="RL training method")
+    parser.add_argument("-defense", "--defense_method", type=str, default="MultiAugmentationDefense", help="image defense method")
     
     return parser.parse_known_args()[0] if known else parser.parse_args()
+
+def get_class(class_name):
+    try:
+        cls = globals()[class_name]
+        return cls
+    except KeyError:
+        raise ValueError(f"'{class_name}' is not exist.")
+
+
+def get_instance(class_name, *args, **kwargs):
+    try:
+        cls = globals()[class_name]
+        return cls(*args, **kwargs)
+    except KeyError:
+        raise ValueError(f"'{class_name}' is not exist.")
 
 
 #TODO val / test 모드 전환
 def main(conf):
     """ object: PPO 알고리즘을 사용하여 Attacked Image를 defense하는 policy를 Agent에게 학습시킵니다."""
     manager = Manager(use=True)
+    defense_dict = dict(
+        LocalGaussianBlurringDefense=["LocalGaussianBlurringDefense", "LocalGaussianBlurringDefensePolicy"],
+        MultiAugmentationDefense=["MultiAugmentation", "MultiAugmentationPolicy"],
+        HighFrequencyDropDefense=["HighFrequencyDrop", "HighFrequencyDropPolicy"],
+    )
+    learn_dict = dict(
+        PPO=["PPO", "PPOTrainer"],
+        DQN=["DQN", "DQNTrainer"]
+    )
     prnt(conf)
     
     # Hyper-parameter
     mode = conf["mode"]
-
     
     # Env, Agent setting
-    env = Env(conf, MultiAugmentation)
-    agent = PPO(conf, MultiAugmentationPolicy)
-    trainer = PPOTrainer(agent, env, conf, manager)
+    try :
+        env = Env(conf, get_class(defense_dict[conf["defense_method"]][0]))
+        agent = get_instance(learn_dict[conf["learn_method"]][0], conf, get_class(defense_dict[conf["defense_method"]][1]))
+        trainer = get_instance(learn_dict[conf["learn_method"]][1], agent, env, conf, manager)
+    except ValueError as e:
+        print(e)
     
     # Train code
     if mode == "train" : 

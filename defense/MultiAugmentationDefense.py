@@ -34,7 +34,6 @@ class MultiAugmentation(DefenseBase):
             - image (np.ndarray) : 전처리할 이미지
             - action (List[int]) : 적용할 전처리 종류
         """
-
         preprocessing_index, = action
 
         match preprocessing_index:
@@ -60,8 +59,6 @@ class MultiAugmentation(DefenseBase):
                 preprocessed_image = self.horizontal_shift_preprocess.process(image, -0.05)
             case 10:
                 preprocessed_image = self.resize_preprocess.process(image, 0.97)
-
-
         return preprocessed_image
 
 
