@@ -86,7 +86,7 @@ class RolloutBuffer:
 
 class PPONoShared(nn.Module):
     def __init__(self, config, policy):
-        super(PPO, self).__init__()
+        super(PPONoShared, self).__init__()
         self.buffer = RolloutBuffer(config["buffer_size"], config["minibatch_size"])
         # parameter setting
         ### parameter for PPO
