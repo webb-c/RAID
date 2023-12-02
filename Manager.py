@@ -8,7 +8,7 @@ class Manager():
     def __init__(self, model_name='mobilenet', attack='PGD_Linf', use=True, info="", action=False):
         # main에서 선언 필요
         if info!="":
-            info += '/'
+            info += '_'
         self.now = datetime.now()
         self.time = self.now.strftime('%m-%d_%H%M%S')
         self.use = use
@@ -38,18 +38,22 @@ class Manager():
         path = f"{self.img_save_path}/episode_{episode}/step_{step}.png"
         self.transform(torch.tensor(img)).save(path)
 
-    def save_action(self, episode, step, actions, epi=True):
+    def save_action(self, episode, step, actions, probs, entros, epi=True):
         f = open(self.action_save_path, 'a')  
         if epi:
             # write episode
             f.write(f'\nepisode {episode}\n')
         else:
             # write step actions
-            text = 'step {:d}\t'.format(episode, step)
-            action, log_prob = "", ""
-            for idx in range(actions)//2:
-                action += f'{actions[idx]}, '
-                log_prob += f'{actions[len(actions)//2+idx]}, '
-            text = text + action[:-2]+'\t'+actions[:-2]
+            text = 'step {:d}\t'.format(step)
+            for action in actions:
+                text += f'{action}, '
+            text = text[:-2] + "\t\t"
+            for prob in probs:
+                text += '{:.5f}, '.format(prob)
+            text = text[:-2] + "\t\t"
+            for entro in entros:
+                text += '{:.5f}, '.format(entro)
+            text = text[:-2] + '\n'
             f.write(text)
         f.close()
