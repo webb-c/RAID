@@ -30,7 +30,7 @@ class PPOTrainer(TrainerBase):
                 if self.conf['image_save']:
                     self.manager.save_image(episode, 0, state[0]) # 변화 없는 이미지 = 0
                 if self.conf['action_logger']:
-                    self.manager.save_action(episode, step, [], epi=True)
+                    self.manager.save_action(episode, 0, [], [], [], epi=True)
             done = False
             ents = [] # entropies
             for step in range(num_step):
@@ -48,7 +48,7 @@ class PPOTrainer(TrainerBase):
                     if self.conf['image_save']:
                         self.manager.save_image(episode, step+1, state[0])
                     if self.conf['action_logger']:
-                        self.manager.save_action(episode, step+1, actions, epi=False)
+                        self.manager.save_action(episode, step+1, actions, action_probs, entropies, epi=False)
                 if done : 
                     break
             ents = np.mean(ents, axis=0)
