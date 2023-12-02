@@ -4,6 +4,7 @@ from tqdm import tqdm
 from pyprnt import prnt
 from agent.PPO import PPO
 from agent.DQN import DQN
+from agent.PPONoShared import PPONoShared
 from Environment import Env
 from Manager import Manager
 from datetime import datetime
@@ -87,10 +88,12 @@ def main(conf):
     defense_dict = dict(
         LocalGaussianBlurringDefense=["LocalGaussianBlurringDefense", "LocalGaussianBlurringDefensePolicy"],
         MultiAugmentationDefense=["MultiAugmentation", "MultiAugmentationPolicy"],
+        MultiAugmentationDefenseShort=["MultiAugmentationShort", "MultiAugmentationShortPolicy"],
         HighFrequencyDropDefense=["HighFrequencyDrop", "HighFrequencyDropPolicy"],
     )
     learn_dict = dict(
         PPO=["PPO", "PPOTrainer"],
+        PPONoShared=["PPONoShared", "PPOTrainer"],
         DQN=["DQN", "DQNTrainer"]
     )
     prnt(conf)
