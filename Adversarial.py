@@ -79,8 +79,8 @@ def make_adv_img(model, model_name, attack):
     os.makedirs(f"./images/{model_name}_{attack}/origin/test", exist_ok=True)
     os.makedirs(f"./images/{model_name}_{attack}/origin/val", exist_ok=True)
     os.makedirs(f"./images/{model_name}_{attack}/adv/train", exist_ok=True)
-    os.makedirs(f"./images/{model_name}_{attack}/adv/train", exist_ok=True)
-    os.makedirs(f"./images/{model_name}_{attack}/adv/train", exist_ok=True)
+    os.makedirs(f"./images/{model_name}_{attack}/adv/test", exist_ok=True)
+    os.makedirs(f"./images/{model_name}_{attack}/adv/val", exist_ok=True)
 
     for idx, (x, advx, name) in enumerate(zip(file[:train_size], adv_file[:train_size], file_name[:train_size])):
         img_transform(x).save(f"./images/{model_name}_{attack}/origin/train/{idx}_{name[0]}.png")
@@ -212,7 +212,7 @@ def setAttack(str_at, net, eps=6.0, iter=7):
     elif str_at == "PGDL2":
         return attacks.L2PGDAttack(net, eps=e, nb_iter=iter)
     elif str_at == "PGDLinf":
-        return attacks.LinfPGDAttack(net, eps=e, nb_iter=iter)
+        return attacks.LinfPGDAttack(net, eps=e, nb_iter=7)
     elif str_at == "FGSM":
         return attacks.GradientSignAttack(net, eps=e)
     elif str_at == "BIML2":
@@ -228,7 +228,7 @@ def setAttack(str_at, net, eps=6.0, iter=7):
     elif str_at == "DDN":
         return attacks.DDNL2Attack(net, nb_iter=iter)
     elif str_at == "SinglePixel":
-        return attacks.SinglePixelAttack(net, max_pixels=iter)
+        return attacks.SinglePixelAttack(net, max_pixels=100)
     elif str_at == "DeepFool":
         return attacks.DeepfoolLinfAttack(net, n_way, eps=e, nb_iter=iter)
     else:
@@ -239,7 +239,7 @@ if __name__ == "__main__":
     print('Execute Adversarial.py')
 
     model_name = 'mobilenet'
-    attack = 'FGSM'
+    attack = 'DeepFool'
     # pretrain_model()
     model = load_model(model_name, './models/mobilenet.pt')
     make_adv_img(model, model_name, attack)

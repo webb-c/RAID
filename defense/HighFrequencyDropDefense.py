@@ -51,4 +51,4 @@ class HighFrequencyDropPolicy(nn.Module):
         a_index = dist_index.sample()
         log_prob_index = dist_index.log_prob(a_index)
 
-        return (a_index, ), (log_prob_index, )
+        return (a_index, ), (log_prob_index, ), (dist_index.entropy(), )

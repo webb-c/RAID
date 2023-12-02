@@ -9,10 +9,11 @@ from Environment import Env
 from Manager import Manager
 from datetime import datetime
 
-from defense.LocalGaussianBlurringDefense import LocalGaussianBlurringDefense, LocalGaussianBlurringDefensePolicy
-from defense.MultiAugmentationDefense import MultiAugmentation, MultiAugmentationPolicy
-from defense.MultiAugmentationDefenseShort import MultiAugmentationShort, MultiAugmentationShortPolicy
+# from defense.LocalGaussianBlurringDefense import LocalGaussianBlurringDefense, LocalGaussianBlurringDefensePolicy
+# from defense.MultiAugmentationDefense import MultiAugmentation, MultiAugmentationPolicy
+# from defense.MultiAugmentationDefenseShort import MultiAugmentationShort, MultiAugmentationShortPolicy
 from defense.HighFrequencyDropDefense import HighFrequencyDrop, HighFrequencyDropPolicy
+from defense.ClipDefense import ClipDefense, ClipDefensePolicy
 
 from train_methods.PPOTrainer import PPOTrainer
 from train_methods.DQNTrainer import DQNTrainer
@@ -51,12 +52,15 @@ def parse_opt(known=False):
     
     parser.add_argument("-layer", "--layer_idx", type=int, default=4, help="feature extract layer in mobilenet")
     parser.add_argument("-a", "--alpha", type=float, default=0.5, help="hyperparameter alpha for cal Reward")
+    parser.add_argument("-mse", "--mse_ratio", type=float, default=0.0, help="ratio of mse reward over confidence drift, if 0.0, no mse reward")
     parser.add_argument("-name", "--model_name", type=str, default="mobilenet", help="attacked DNN model name")
     parser.add_argument("-dataset", "--dataset_name", type=str, default="CIFAR10", help="train dataset name")
     parser.add_argument("-attack", "--train_attack", type=str, default="PGDLinf", help="attack type to make attacked images")
 
     parser.add_argument("-save", "--image_save", type=str2bool, default=False, help="save step images")
     parser.add_argument("-log", "--use_logger", type=str2bool, default=True, help="logging loss and reward")
+    parser.add_argument("-info", "--logger_info", type=str, default="", help="set log name, if None, just Time option")
+    parser.add_argument("-action", "--action_logger", type=str2bool, default=False, help="logging actions")
     parser.add_argument("-imgheight", "--image_height", type=int, default=32, help="image height")
     parser.add_argument("-imgwidth", "--image_width", type=int, default=32, help="image width")
 
@@ -84,12 +88,13 @@ def get_instance(class_name, *args, **kwargs):
 #TODO val / test 모드 전환
 def main(conf):
     """ object: PPO 알고리즘을 사용하여 Attacked Image를 defense하는 policy를 Agent에게 학습시킵니다."""
-    manager = Manager(use=conf["use_logger"])
+    manager = Manager(use=conf["use_logger"], info=conf['logger_info'], action=conf['action_logger'])
     defense_dict = dict(
         LocalGaussianBlurringDefense=["LocalGaussianBlurringDefense", "LocalGaussianBlurringDefensePolicy"],
         MultiAugmentationDefense=["MultiAugmentation", "MultiAugmentationPolicy"],
         MultiAugmentationDefenseShort=["MultiAugmentationShort", "MultiAugmentationShortPolicy"],
         HighFrequencyDropDefense=["HighFrequencyDrop", "HighFrequencyDropPolicy"],
+        ClipDefense=['ClipDefense', 'ClipDefensePolicy'],
     )
     learn_dict = dict(
         PPO=["PPO", "PPOTrainer"],

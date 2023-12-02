@@ -251,9 +251,9 @@ class PPONoShared(nn.Module):
             agent_feature = self._backbone_policy(img, feature)
             output = self._policy(agent_feature, softmax_dim=1, batch=True)
         
-        actions, action_probs = self.policy_network.get_actions(output)
+        actions, action_probs, entropies = self.policy_network.get_actions(output)
         
-        return actions, action_probs
+        return actions, action_probs, entropies
 
 
     def put_data(self, transition):
@@ -285,7 +285,7 @@ class PPONoShared(nn.Module):
                 for mini_batch in data:
                     s, a, r, s_prime, done_mask, old_log_probs, td_target, advantages = mini_batch
                     old_log_probs = old_log_probs.transpose(0, 1).to(self.available_device)
-                    actions, log_probs = self.get_actions(s, train=True)
+                    actions, log_probs, entropies = self.get_actions(s, train=True)
                     loss_list = []
 
                     v_loss = F.smooth_l1_loss(self.get_value(s, train=True) , td_target)

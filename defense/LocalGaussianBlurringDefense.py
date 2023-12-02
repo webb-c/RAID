@@ -100,4 +100,4 @@ class LocalGaussianBlurringDefensePolicy(nn.Module):
         log_prob_noise = dist_noise.log_prob(a_noise)
         a_noise = torch.clamp(a_noise*0.25, 0, 0.25).int()
 
-        return (a_channel, a_index, a_noise), (log_prob_channel, log_prob_index, log_prob_noise)
+        return (a_channel, a_index, a_noise), (log_prob_channel, log_prob_index, log_prob_noise), (dist_channel.entropy(), dist_index.entropy(), dist_noise.entropy())
