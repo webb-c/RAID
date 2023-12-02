@@ -13,7 +13,7 @@ from defense.LocalGaussianBlurringDefense import LocalGaussianBlurringDefense as
 
 class Env():
     def __init__(self,
-                 args: dict = {'learning_rate': 0.0003, 'gamma': 0.9, 'lmbda': 0.9, 'alpha': 0.5, 'eps_clip': 0.2, 'num_epoch': 10, 'num_step': 50, 'rollout_len': 3, 'buffer_size': 10, 'minibatch_size': 32, 'mode': 'train', 'model_name': 'mobilenet', 'dataset_name': 'CIFAR10', 'layer_idx': 4},
+                 args: dict = {'learning_rate': 0.0003, 'gamma': 0.9, 'lmbda': 0.9, 'alpha': 0.5, 'mse_ratio': 0.0, 'eps_clip': 0.2, 'num_epoch': 10, 'num_step': 50, 'rollout_len': 3, 'buffer_size': 10, 'minibatch_size': 32, 'mode': 'train', 'model_name': 'mobilenet', 'dataset_name': 'CIFAR10', 'layer_idx': 4},
                  defense = LGB
                  ) -> None:
         
@@ -23,6 +23,7 @@ class Env():
         self.episode: int = 0 # current episode (integer)
         self.prev_confidence_score: np.ndarray = None
         self.alpha: float = args["alpha"]
+        self.mse_ratio: float = args['mse_ratio']
         self.size: int = 32
         self.epoch: int = 1
         self.num_epoch = args['num_epoch']
@@ -62,6 +63,7 @@ class Env():
             permutation_vector : [0, n-1] 가 중복되지 않고 섞여있는 np.ndarray
         """
         permutation_vector = np.random.permutation(n)
+        permutation_vector = [item for item in permutation_vector for _ in range(10000)]
         return permutation_vector
 
     def _load_dataset(self) -> None:
@@ -103,7 +105,7 @@ class Env():
 
         data_num = dataset["num_images"]
 
-        permutation_list = self._get_permutation_list(n = data_num)
+        permutation_list = self._get_permutation_list(n = 1000)
         
         original_images = (self._get_transform_image(dataset["original_images"][index]) for index in permutation_list)
         perturbed_images = (self._get_transform_image(dataset["perturbed_images"][index]) for index in permutation_list)
@@ -198,7 +200,10 @@ class Env():
         confidence_score = confidence_score.T
         prev_confidence_score = self.prev_confidence_score.T
         target_drift = confidence_score[self.target_label] - prev_confidence_score[self.target_label]
-        result = self.alpha * target_drift
+
+        target_mse = ((self.target_image - self.state[0]) ** 2).mean()
+        result = self.alpha * (target_drift - self.mse_ratio * target_mse)
+
 
         return result
                 
