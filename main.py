@@ -18,6 +18,8 @@ from defense.ClipDefense import ClipDefense, ClipDefensePolicy
 from train_methods.PPOTrainer import PPOTrainer
 from train_methods.DQNTrainer import DQNTrainer
 
+from test_methods.tester import Tester
+
 import copy
 
 def str2bool(v):
@@ -37,6 +39,7 @@ def parse_opt(known=False):
     parser = argparse.ArgumentParser()
     
     parser.add_argument("-mode", "--mode", type=str, default="train", help="train / val / test")
+    parser.add_argument("-agentpath", "--agent_path", type=str, default=None, help="reinforcement learning agent weights path")
     parser.add_argument("-eps", "--max_ep_len", type=int, default=10, help="max timesteps in one episode")
     parser.add_argument("-lr", "--learning_rate", type=float, default=0.0003, help="learning rate")
     parser.add_argument("-g", "--gamma", type=float, default=0.9, help=" discount factor gamma")
@@ -110,16 +113,24 @@ def main(conf):
     try :
         env = Env(conf, get_class(defense_dict[conf["defense_method"]][0]))
         agent = get_instance(learn_dict[conf["learn_method"]][0], conf, get_class(defense_dict[conf["defense_method"]][1]))
-        trainer = get_instance(learn_dict[conf["learn_method"]][1], agent, env, conf, manager)
     except ValueError as e:
         print(e)
     
     # Train code
     if mode == "train" : 
-        
+        trainer = get_instance(learn_dict[conf["learn_method"]][1], agent, env, conf, manager)
         trainer.train()
             
         print("Train finish with,")
+        prnt(conf)
+        print("Start:\t", manager.get_time().strftime('%m-%d %H:%M:%S'))
+        print("End:\t", datetime.now().strftime('%m-%d %H:%M:%S'))
+    
+    elif mode == "test":
+        tester = Tester(agent, env, conf, manager, agent_path=conf["agent_path"])
+        tester.test()
+        
+        print("Test finish with,")
         prnt(conf)
         print("Start:\t", manager.get_time().strftime('%m-%d %H:%M:%S'))
         print("End:\t", datetime.now().strftime('%m-%d %H:%M:%S'))
