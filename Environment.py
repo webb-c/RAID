@@ -15,7 +15,7 @@ from defense.LocalGaussianBlurringDefense import LocalGaussianBlurringDefense as
 
 class Env():
     def __init__(self,
-                 args: dict = {'learning_rate': 0.0003, 'gamma': 0.9, 'lmbda': 0.9, 'alpha': 0.5, 'mse_ratio': 0.0, 'eps_clip': 0.2, 'num_epoch': 10, 'num_step': 50, 'rollout_len': 3, 'buffer_size': 10, 'minibatch_size': 32, 'mode': 'train', 'model_name': 'mobilenet', 'dataset_name': 'CIFAR10', 'layer_idx': 4},
+                 args: dict = {'learning_rate': 0.0003, 'gamma': 0.9, 'lmbda': 0.9, 'alpha': 0.5, 'mse_ratio': 0.0, 'mse_ratio': 0.0, 'eps_clip': 0.2, 'num_epoch': 10, 'num_step': 50, 'rollout_len': 3, 'buffer_size': 10, 'minibatch_size': 32, 'mode': 'train', 'model_name': 'mobilenet', 'dataset_name': 'CIFAR10', 'layer_idx': 4},
                  defense = LGB
                  ) -> None:
         
@@ -26,6 +26,7 @@ class Env():
         self.episode: int = 0 # current episode (integer)
         self.prev_confidence_score: np.ndarray = None
         self.alpha: float = args["alpha"]
+        self.mse_ratio: float = args['mse_ratio']
         self.mse_ratio: float = args['mse_ratio']
         self.size: int = 32
         self.epoch: int = 1
@@ -111,6 +112,7 @@ class Env():
         data_num = 1000
 
         permutation_list = self._get_permutation_list(n = 1000)
+        permutation_list = self._get_permutation_list(n = 1000)
         
         original_images = (self._get_transform_image(dataset["original_images"][index]) for index in permutation_list)
         perturbed_images = (self._get_transform_image(dataset["perturbed_images"][index]) for index in permutation_list)
@@ -172,9 +174,9 @@ class Env():
         
     
 
-    def _inference(self) -> Tuple[np.ndarray, np.ndarray]:
+    def inference(self) -> Tuple[np.ndarray, np.ndarray]:
         """
-        _inference 함수는 입력에 대한 target DNN 모델의 confidence score와 중간 feature를 반환합니다.
+        inference 함수는 입력에 대한 target DNN 모델의 confidence score와 중간 feature를 반환합니다.
 
         input:
             image: 추론을 진행할 torch.Tensor 이미지
@@ -216,6 +218,14 @@ class Env():
         beta = 1 - alpha   # 올바른 클래스에 대한 확신 증가에 대한 보상 가중치
         termination_reward = 1  # 성공적 종료에 대한 추가 보상
         misclassification_penalty = -0.5  # 잘못 분류에 대한 패널티
+        
+        confidence_score = confidence_score.T
+        prev_confidence_score = self.prev_confidence_score.T
+        target_drift = confidence_score[self.target_label] - prev_confidence_score[self.target_label]
+
+        target_mse = ((self.target_image - self.state[0]) ** 2).mean()
+        result = self.alpha * (target_drift - self.mse_ratio * target_mse)
+
 
         # 목표 클래스에 대한 확신이 감소하면 보상
         adversarial_confidence_decrease = self.prev_confidence_score.T[self.adversarial_label] - new_confidence_score.T[self.adversarial_label]
@@ -275,14 +285,16 @@ class Env():
         """
         next = self._get_next_image_label()
         self.epoch = 0
-        if next == -1:
+        if next == -1 and self.mode == "train":
             self._set_dataset()
-            origin_image_tensor, perturbed_image_tensor, image_label, adversarial_label = self._get_next_image_label()
+            origin_image_tensor, perturbed_image_tensor, image_label = self._get_next_image_label()
+        elif next == -1 and self.mode != "train":
+            return (-1, -1)
         else:
             origin_image_tensor, perturbed_image_tensor, image_label, adversarial_label = next
 
         self.state = [np.array(perturbed_image_tensor), None]
-        confidence_score, feature_map = self._inference()
+        confidence_score, feature_map = self.inference()
 
         self.episode += 1
         self.target_image = np.array(origin_image_tensor)
@@ -320,7 +332,7 @@ class Env():
         self._defense_image(action)
 
         # Inference image, get new confidence score
-        confidence_score, feature_map = self._inference()
+        confidence_score, feature_map = self.inference()
 
         reward = self._get_reward(confidence_score)
 

@@ -17,6 +17,7 @@ from defense.ClipDefense import ClipDefense, ClipDefensePolicy
 
 from train_methods.PPOTrainer import PPOTrainer
 from train_methods.DQNTrainer import DQNTrainer
+from test_methods.tester import Tester
 
 import copy
 
@@ -67,6 +68,8 @@ def parse_opt(known=False):
     parser.add_argument("-learn", "--learn_method", type=str, default="PPO", help="RL training method")
     parser.add_argument("-defense", "--defense_method", type=str, default="MultiAugmentationDefense", help="image defense method")
     
+    parser.add_argument("-rand", "--rand", type=str2bool, default=False, help="rand action for testing")
+    
     return parser.parse_known_args()[0] if known else parser.parse_args()
 
 def get_class(class_name):
@@ -110,12 +113,15 @@ def main(conf):
     try :
         env = Env(conf, get_class(defense_dict[conf["defense_method"]][0]))
         agent = get_instance(learn_dict[conf["learn_method"]][0], conf, get_class(defense_dict[conf["defense_method"]][1]))
-        trainer = get_instance(learn_dict[conf["learn_method"]][1], agent, env, conf, manager)
     except ValueError as e:
         print(e)
     
     # Train code
     if mode == "train" : 
+        try :
+            trainer = get_instance(learn_dict[conf["learn_method"]][1], agent, env, conf, manager)
+        except ValueError as e:
+            print(e)
         
         trainer.train()
             
@@ -124,6 +130,16 @@ def main(conf):
         print("Start:\t", manager.get_time().strftime('%m-%d %H:%M:%S'))
         print("End:\t", datetime.now().strftime('%m-%d %H:%M:%S'))
 
+    # Test code
+    if mode == "test" :
+        tester = Tester(agent, env, conf, manager)
+        
+        tester.test()
+        
+        print("Test finish with,")
+        prnt(conf)
+        print("Start:\t", manager.get_time().strftime('%m-%d %H:%M:%S'))
+        print("End:\t", datetime.now().strftime('%m-%d %H:%M:%S'))
 
 if __name__ == "__main__":
     warnings.filterwarnings('ignore', category=UserWarning)

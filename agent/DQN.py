@@ -195,18 +195,16 @@ class DQN(nn.Module):
         return q_table
     
     
-    def get_actions(self, state, train=False):
+    def get_actions(self, state, train=False, rand=False):
         """ object: input을 받아, 내부에서 _backbone, _policy 함수를 호출한 뒤 action과 해당 action의 log_prob들을 tuple로 반환합니다.
         *만약 train하는 과정이라면 batch 단위로 실행되기 때문에 output이 (32, .) 형태의 Tensor로 반환됩니다.
         input: state -> Tuple[torch.Tensor, torch.Tensor]; train -> bool
         output: actions -> Tuple[int, int, float]; probs -> Tuple[float, float, float]
         """
-
         q_table = self.get_q_table(state, train=train)
-        
         coin = random.random()
-        if coin < self.epsilon:
-            return (random.randint(0,10), )
+        if coin < self.epsilon or rand:
+            return (random.randint(0, q_table.shape[0]), )
         else : 
             return (q_table.argmax().item(), )
 
