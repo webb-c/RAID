@@ -15,7 +15,7 @@ class PPOTrainer(TrainerBase):
         num_step = self.conf["num_step"] 
         mode = self.conf["mode"]
         print_interval = 100
-        save_interval = 2000
+        save_interval = 10000
 
         self.env.train()
         
@@ -23,7 +23,7 @@ class PPOTrainer(TrainerBase):
 
         total_reward = 0
         
-        for episode in tqdm(range(num_episode)):
+        for episode in tqdm(range(num_episode+1)):
             epi_reward = 0
             state, _ = self.env.reset()
             if episode%save_interval==0:

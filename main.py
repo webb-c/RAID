@@ -39,15 +39,15 @@ def parse_opt(known=False):
     
     parser.add_argument("-mode", "--mode", type=str, default="train", help="train / val / test")
     parser.add_argument("-eps", "--max_ep_len", type=int, default=10, help="max timesteps in one episode")
-    parser.add_argument("-lr", "--learning_rate", type=float, default=0.0003, help="learning rate")
+    parser.add_argument("-lr", "--learning_rate", type=float, default=0.001, help="learning rate")
     parser.add_argument("-g", "--gamma", type=float, default=0.9, help=" discount factor gamma")
     parser.add_argument("-lmbda", "--lmbda", type=float, default=0.9, help="hyperparameter lambda for cal GAE")
     parser.add_argument("-clip", "--eps_clip", type=float, default=0.2, help="clip parameter for PPO")
     
-    parser.add_argument("-episode", "--num_episode", type=int, default=30000, help="number of train episode")
-    parser.add_argument("-epoch", "--num_epoch", type=int, default=10, help="number of maximum action")
-    parser.add_argument("-step", "--num_step", type=int, default=10, help="number of PPO's step" )
-    parser.add_argument("-Kepoch", "--K_epochs", type=int, default=3, help="update policy for K Epoch")
+    parser.add_argument("-episode", "--num_episode", type=int, default=300000, help="number of train episode")
+    parser.add_argument("-epoch", "--num_epoch", type=int, default=15, help="number of maximum action")
+    parser.add_argument("-step", "--num_step", type=int, default=15, help="number of PPO's step" )
+    parser.add_argument("-Kepoch", "--K_epochs", type=int, default=5, help="update policy for K Epoch")
     parser.add_argument("-buff", "--buffer_size", type=int, default=10, help="buffer size")
     parser.add_argument("-batch", "--minibatch_size", type=int, default=32, help="minibatch size")
     
@@ -66,7 +66,7 @@ def parse_opt(known=False):
     parser.add_argument("-imgwidth", "--image_width", type=int, default=32, help="image width")
 
     parser.add_argument("-learn", "--learn_method", type=str, default="PPO", help="RL training method")
-    parser.add_argument("-defense", "--defense_method", type=str, default="MultiAugmentationDefense", help="image defense method")
+    parser.add_argument("-defense", "--defense_method", type=str, default="HighFrequencyDropDefense", help="image defense method")
     parser.add_argument("-path", "--agent_path", type=str, default=None, help="trained agent path")
 
     parser.add_argument("-rand", "--rand", type=str2bool, default=False, help="rand action for testing")

@@ -15,7 +15,7 @@ class DQNTrainer(TrainerBase):
         num_step = self.conf["num_step"] 
         mode = self.conf["mode"]
         print_interval = 100
-        save_interval = 100
+        save_interval = 10000
         q_target_interval = 1000
 
         self.env.train()
@@ -25,7 +25,7 @@ class DQNTrainer(TrainerBase):
         # Train code
 
         total_reward = 0
-        for episode in tqdm(range(num_episode)):
+        for episode in tqdm(range(num_episode+1)):
             if episode % q_target_interval == 0:
                 q_target = copy.deepcopy(self.agent)
             epi_reward = 0
@@ -42,9 +42,10 @@ class DQNTrainer(TrainerBase):
                 reward = reward.item()
                 epi_reward += reward
                 state = state_prime
-                if self.conf['image_save'] and episode%save_interval==0:
-                    self.manager.save_image(episode, step+1, state[0])
-                # to save agent
+                if episode%save_interval==0:
+                    if self.conf['image_save'] :
+                        self.manager.save_image(episode, step+1, state[0])
+                    # to save agent
                     self.manager.save_model(episode, self.agent.state_dict())
                 if done : 
                     break
