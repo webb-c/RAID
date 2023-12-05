@@ -44,6 +44,8 @@ class DQNTrainer(TrainerBase):
                 state = state_prime
                 if self.conf['image_save'] and episode%save_interval==0:
                     self.manager.save_image(episode, step+1, state[0])
+                # to save agent
+                    self.manager.save_model(episode, self.agent.state_dict())
                 if done : 
                     break
             total_reward += epi_reward
