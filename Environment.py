@@ -27,7 +27,7 @@ class Env():
         self.size: int = 32
         self.epoch: int = 1
         self.num_epoch = args['num_epoch']
-
+        
         self.model_name: str = args["model_name"]
         self.train_attack: str = args["train_attack"]
         self.log_path: str = None
@@ -104,7 +104,7 @@ class Env():
 
         data_num = dataset["num_images"]
 
-        permutation_list = self._get_permutation_list(n = 1000)
+        permutation_list = self._get_permutation_list(data_num)
         
         original_images = (self._get_transform_image(dataset["original_images"][index]) for index in permutation_list)
         perturbed_images = (self._get_transform_image(dataset["perturbed_images"][index]) for index in permutation_list)
