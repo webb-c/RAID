@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 import random
 import torch.nn as nn
 import torch.nn.functional as F
@@ -18,7 +19,11 @@ class HighFrequencyDrop(DefenseBase):
             - image (np.ndarray) : 전처리할 이미지
             - action (List[int]) : 반지름
         """
-        action = action[0].item()
+        #action = action[0].item()
+        if isinstance(action[0], torch.Tensor):
+            action =  action[0].item()
+        else:
+            action = action[0]
         action = (action + 1) * 2
         preprocessed_image = get_filtered_image(image, r=action)
         preprocessed_image = preprocessed_image.astype(np.float32)
