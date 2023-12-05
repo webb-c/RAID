@@ -160,9 +160,9 @@ class Env():
         
     
 
-    def _inference(self) -> Tuple[np.ndarray, np.ndarray]:
+    def inference(self) -> Tuple[np.ndarray, np.ndarray]:
         """
-        _inference 함수는 입력에 대한 target DNN 모델의 confidence score와 중간 feature를 반환합니다.
+        inference 함수는 입력에 대한 target DNN 모델의 confidence score와 중간 feature를 반환합니다.
 
         input:
             image: 추론을 진행할 torch.Tensor 이미지
@@ -243,14 +243,16 @@ class Env():
         """
         next = self._get_next_image_label()
         self.epoch = 0
-        if next == -1:
+        if next == -1 and self.mode == "train":
             self._set_dataset()
             origin_image_tensor, perturbed_image_tensor, image_label = self._get_next_image_label()
+        elif next == -1 and self.mode != "train":
+            return (-1, -1)
         else:
             origin_image_tensor, perturbed_image_tensor, image_label = next
 
         self.state = [np.array(perturbed_image_tensor), None]
-        confidence_score, feature_map = self._inference()
+        confidence_score, feature_map = self.inference()
 
         self.episode += 1
         self.target_image = np.array(origin_image_tensor)
@@ -287,7 +289,7 @@ class Env():
         self._defense_image(action)
 
         # Inference image, get new confidence score
-        confidence_score, feature_map = self._inference()
+        confidence_score, feature_map = self.inference()
 
         reward = self._get_reward(confidence_score)
 
