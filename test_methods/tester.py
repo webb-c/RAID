@@ -65,4 +65,4 @@ class Tester(TesterBase):
                 score += 1
         
         print("\n# of data :{}, correction ratio : {:.2f}".format(dataset_num, score/dataset_num))
-        self.manager.record(mode+"/accuracy", score/dataset_num)
+        self.manager.record(mode+"/accuracy", score/dataset_num, 1)
