@@ -18,6 +18,8 @@ class HighFrequencyDrop(DefenseBase):
             - image (np.ndarray) : 전처리할 이미지
             - action (List[int]) : 반지름
         """
+        action = action[0].item()
+        action = (action + 1) * 2
         preprocessed_image = get_filtered_image(image, r=action)
         preprocessed_image = preprocessed_image.astype(np.float32)
         return preprocessed_image
@@ -33,7 +35,7 @@ class HighFrequencyDropPolicy(nn.Module):
             nn.ReLU(),
             nn.Linear(64, 64),
             nn.ReLU(),
-            nn.Linear(64, 17),   # [0, 16]
+            nn.Linear(64, 7),   # [0, 7]
         )
         self.action_num = 1
 
@@ -45,7 +47,7 @@ class HighFrequencyDropPolicy(nn.Module):
     
     def get_actions(self, x, softmax_dim=0, rand=False):
         if rand :
-            return (random.randint(0, 16), ), (0, ), (0, )
+            return (random.randint(0, 7), ), (0, ), (0, )
         
         index_out = x
         prob_index = F.softmax(index_out, dim=softmax_dim)
