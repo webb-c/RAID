@@ -1,3 +1,4 @@
+import torch
 from torch import nn
 from tqdm import tqdm
 import numpy as np
@@ -24,6 +25,9 @@ class Tester(TesterBase):
         for episode in tqdm(range(num_episode)):
             epi_reward = 0
             state, _ = self.env.reset()
+            initial_state = state.copy()
+            initial_confidence, _ = self.env.inference()
+            initial_label = torch.argmax(initial_confidence)
             if episode%save_interval==0:
                 if self.conf['image_save']:
                     self.manager.save_image(episode, 0, state[0]) # 변화 없는 이미지 = 0
@@ -36,7 +40,6 @@ class Tester(TesterBase):
                 ents.append(np.array(entropies))
                 
                 state_prime, reward, terminated, truncated, info = self.env.step(actions)
-                # TODO terminated 정하기
                 if terminated or truncated :
                     done = True
                 self.agent.put_data((state, actions, reward, state_prime, action_probs, done))
@@ -48,7 +51,11 @@ class Tester(TesterBase):
                         self.manager.save_image(episode, step+1, state[0])
                     if self.conf['action_logger']:
                         self.manager.save_action(episode, step+1, actions, action_probs, entropies, epi=False)
-                if done : 
+                if done :
+                    step_confidence, _ = self.env.inference()
+                    step_label = torch.argmax(step_confidence)
+                    if initial_label == step_label:
+                        state = initial_state
                     break
             ents = np.mean(ents, axis=0)
             for idx, ent in enumerate(ents):
