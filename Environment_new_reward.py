@@ -197,7 +197,7 @@ class Env():
         new_image = self.defense.apply(self.state[0], action)
         self.state[0] = new_image
         
-    def _get_reward_2(self, new_confidence_score):
+    def _get_reward(self, new_confidence_score):
         """
         Calculate the reward for the agent's action.
 
