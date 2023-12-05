@@ -3,7 +3,7 @@ from torch import nn
 from tqdm import tqdm
 import numpy as np
 
-from teset_methods.TesterBase import TesterBase
+from test_methods.TesterBase import TesterBase
 
 class Tester(TesterBase):
     def __init__(self, agent: nn.Module, env, conf, manager, agent_path = None) -> None:

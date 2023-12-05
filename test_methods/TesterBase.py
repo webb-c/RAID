@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 import torch
 import torch.nn as nn
 
-class TrainerBase(ABC):
+class TesterBase(ABC):
 
     def __init__(
             self,
