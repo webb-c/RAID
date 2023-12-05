@@ -234,7 +234,7 @@ class PPONoShared(nn.Module):
         return v
     
     
-    def get_actions(self, state, train=False):
+    def get_actions(self, state, train=False, rand=False):
         """ object: input을 받아, 내부에서 _backbone, _policy 함수를 호출한 뒤 action과 해당 action의 log_prob들을 tuple로 반환합니다.
         *만약 train하는 과정이라면 batch 단위로 실행되기 때문에 output이 (32, .) 형태의 Tensor로 반환됩니다.
         input: state -> Tuple[torch.Tensor, torch.Tensor]; train -> bool
@@ -255,7 +255,7 @@ class PPONoShared(nn.Module):
             agent_feature = self._backbone_policy(img, feature)
             output = self._policy(agent_feature, softmax_dim=1, batch=True)
         
-        actions, action_probs, entropies = self.policy_network.get_actions(output)
+        actions, action_probs, entropies = self.policy_network.get_actions(output, rand=rand)
         
         return actions, action_probs, entropies
 

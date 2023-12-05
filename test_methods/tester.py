@@ -14,6 +14,7 @@ class Tester(TesterBase):
         num_episode = self.conf["num_episode"]
         num_step = self.conf["num_step"] 
         mode = self.conf["mode"]
+        rand = self.conf["rand"]
         print_interval = 100
         save_interval = 100
 
@@ -36,7 +37,7 @@ class Tester(TesterBase):
             done = False
             ents = [] # entropies
             for step in range(num_step):
-                actions, action_probs, entropies = self.agent.get_actions(state)
+                actions, action_probs, entropies = self.agent.get_actions(state, rand=rand)
                 ents.append(np.array(entropies))
                 
                 state_prime, reward, terminated, truncated, info = self.env.step(actions)

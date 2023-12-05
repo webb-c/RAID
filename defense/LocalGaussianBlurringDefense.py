@@ -1,5 +1,6 @@
 from defense.DefenseBase import DefenseBase
 import numpy as np
+import random
 import cv2 as cv
 
 import torch
@@ -74,7 +75,9 @@ class LocalGaussianBlurringDefensePolicy(nn.Module):
 
         return (channel_out, index_out, noise_out)
     
-    def get_actions(self, x, softmax_dim=0):
+    def get_actions(self, x, softmax_dim=0, rand=False):
+        if rand :
+            return 
         channel_out, index_out, noise_out = x
 
         prob_channel = F.softmax(channel_out, dim=softmax_dim)

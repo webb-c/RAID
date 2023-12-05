@@ -1,4 +1,5 @@
 import numpy as np
+import random
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Categorical
@@ -42,7 +43,10 @@ class HighFrequencyDropPolicy(nn.Module):
         return index_out
     
     
-    def get_actions(self, x, softmax_dim=0):
+    def get_actions(self, x, softmax_dim=0, rand=False):
+        if rand :
+            return (random.randint(0, 16), ), (0, ), (0, )
+        
         index_out = x
         prob_index = F.softmax(index_out, dim=softmax_dim)
 
