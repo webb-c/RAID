@@ -156,7 +156,9 @@ class PPONoShared(nn.Module):
     def _backbone_policy(self, img, feature):
         """ object: img를 part1에 통과시키고, 그 결과를 feature와 addition한 뒤 part2에 통과시켜 얻은 최종 feature를 반환합니다."""
         mid_feature = self.backbone_part1_policy(img)
-        agent_feature = self.backbone_part2_policy(mid_feature - feature)
+        concat = torch.cat([mid_feature, feature], dim=2)
+        agent_feature = self.backbone_part2_policy(concat)
+        agent_feature = F.adaptive_avg_pool2d(agent_feature, (1, 1))
         agent_feature = torch.squeeze(agent_feature)
         
         return agent_feature
@@ -164,7 +166,9 @@ class PPONoShared(nn.Module):
     def _backbone_value(self, img, feature):
         """ object: img를 part1에 통과시키고, 그 결과를 feature와 addition한 뒤 part2에 통과시켜 얻은 최종 feature를 반환합니다."""
         mid_feature = self.backbone_part1_value(img)
-        agent_feature = self.backbone_part2_value(mid_feature - feature)
+        concat = torch.cat([mid_feature, feature], dim=2)
+        agent_feature = self.backbone_part2_value(concat)
+        agent_feature = F.adaptive_avg_pool2d(agent_feature, (1, 1))
         agent_feature = torch.squeeze(agent_feature)
         
         return agent_feature
