@@ -9,9 +9,9 @@ from Environment import Env
 from Manager import Manager
 from datetime import datetime
 
-from defense.LocalGaussianBlurringDefense import LocalGaussianBlurringDefense, LocalGaussianBlurringDefensePolicy
-from defense.MultiAugmentationDefense import MultiAugmentation, MultiAugmentationPolicy
-from defense.MultiAugmentationDefenseShort import MultiAugmentationShort, MultiAugmentationShortPolicy
+# from defense.LocalGaussianBlurringDefense import LocalGaussianBlurringDefense, LocalGaussianBlurringDefensePolicy
+# from defense.MultiAugmentationDefense import MultiAugmentation, MultiAugmentationPolicy
+# from defense.MultiAugmentationDefenseShort import MultiAugmentationShort, MultiAugmentationShortPolicy
 from defense.HighFrequencyDropDefense import HighFrequencyDrop, HighFrequencyDropPolicy
 from defense.ClipDefense import ClipDefense, ClipDefensePolicy
 
@@ -67,7 +67,8 @@ def parse_opt(known=False):
 
     parser.add_argument("-learn", "--learn_method", type=str, default="PPO", help="RL training method")
     parser.add_argument("-defense", "--defense_method", type=str, default="MultiAugmentationDefense", help="image defense method")
-    
+    parser.add_argument("-path", "--agent_path", type=str, default=None, help="trained agent path")
+
     parser.add_argument("-rand", "--rand", type=str2bool, default=False, help="rand action for testing")
     
     return parser.parse_known_args()[0] if known else parser.parse_args()
@@ -91,7 +92,7 @@ def get_instance(class_name, *args, **kwargs):
 #TODO val / test 모드 전환
 def main(conf):
     """ object: PPO 알고리즘을 사용하여 Attacked Image를 defense하는 policy를 Agent에게 학습시킵니다."""
-    manager = Manager(use=conf["use_logger"], info=conf['logger_info'], action=conf['action_logger'])
+    manager = Manager(use=conf["use_logger"], info=conf['logger_info'], action=conf['action_logger'], mode=conf['mode'])
     defense_dict = dict(
         LocalGaussianBlurringDefense=["LocalGaussianBlurringDefense", "LocalGaussianBlurringDefensePolicy"],
         MultiAugmentationDefense=["MultiAugmentation", "MultiAugmentationPolicy"],
@@ -132,7 +133,7 @@ def main(conf):
 
     # Test code
     if mode == "test" :
-        tester = Tester(agent, env, conf, manager)
+        tester = Tester(agent, env, conf, manager, agent_path=conf['agent_path'])
         
         tester.test()
         

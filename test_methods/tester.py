@@ -11,7 +11,8 @@ class Tester(TesterBase):
 
     def test(self):
         # Hyper-parameter
-        num_episode = self.conf["num_episode"]
+        # num_episode = self.conf["num_episode"]
+        num_episode = 10179
         num_step = self.conf["num_step"] 
         mode = self.conf["mode"]
         rand = self.conf["rand"]
