@@ -1,5 +1,6 @@
 from defense.DefenseBase import DefenseBase
 import numpy as np
+import random
 
 import torch
 import torch.nn as nn
@@ -76,7 +77,10 @@ class ClipDefensePolicy(nn.Module):
 
         return (center_out, length_out)
     
-    def get_actions(self, x, softmax_dim=0):
+    def get_actions(self, x, softmax_dim=0, rand=False):
+        if rand:
+            return (random.randint(0, 4), random.randint(0, 3)), (0, 0), (0, 0)
+        
         center_out, length_out = x
         
         prob_center = F.softmax(center_out, dim=softmax_dim)
