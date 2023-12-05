@@ -11,12 +11,11 @@ class Tester(TesterBase):
 
     def test(self):
         # Hyper-parameter
-        num_episode = self.conf["num_episode"]
+        # num_episode = self.conf["num_episode"]
+        num_episode = 10179
         num_step = self.conf["num_step"] 
         mode = self.conf["mode"]
         rand = self.conf["rand"]
-        print_interval = 100
-        save_interval = 100
 
         self.env.test()
         
@@ -37,13 +36,10 @@ class Tester(TesterBase):
             if self.conf['action_logger']:
                 self.manager.save_action(episode, 0, [], [], [], epi=True)
         
-            done = False
             for step in range(num_step):
                 actions, action_probs, entropies = self.agent.get_actions(state, rand=rand)
                 
-                state_prime, reward, terminated, truncated, info = self.env.step(actions)
-                if terminated or truncated :
-                    done = True
+                state_prime, _, _, _, info = self.env.step(actions)
                 state = state_prime
 
                 self.manager.save_image(episode, step+1, state[0])
@@ -51,15 +47,13 @@ class Tester(TesterBase):
                 if self.conf['action_logger']:
                     self.manager.save_action(episode, step+1, actions, action_probs, entropies, epi=False)
 
-                if done: # truncated만 잡히는 조건
-                    step_confidence, _ = self.env.inference()
-                    step_label = np.argmax(step_confidence)
-                    if initial_label == step_label:
-                        result = initial_label
-                    else:
-                        result = step_label
-                        
-                    break
+            
+            step_confidence, _ = self.env.inference()
+            step_label = np.argmax(step_confidence)
+            if initial_label == step_label:
+                result = initial_label
+            else:
+                result = step_label
     
             if result == self.env.target_label:
                 score += 1

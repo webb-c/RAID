@@ -5,7 +5,7 @@ import torch, os
 
 
 class Manager():
-    def __init__(self, model_name='mobilenet', attack='PGD_Linf', use=True, info="", action=False):
+    def __init__(self, model_name='mobilenet', attack='PGD_Linf', use=True, info="", action=False, mode='train'):
         # main에서 선언 필요
         if info!="":
             info += '_'
@@ -15,8 +15,11 @@ class Manager():
         self.log_path = f'./logs/{model_name}_{attack}/{info}{self.time}'
         self.img_save_path = f'./saved_images/{model_name}_{attack}/{info}{self.time}'
         self.action_save_path = f'./action_log/{model_name}_{attack}/{info}{self.time}.txt'
+        self.model_save_path = f'./saved_agents/{model_name}_{attack}/{info}{self.time}/'
         self.transform = transforms.ToPILImage()
         self.action = action
+        if mode=='train':
+            os.makedirs(f"{self.model_save_path}", exist_ok=True)
         if self.use : 
             self.writer = SummaryWriter(self.log_path)
         if self.action :
@@ -57,3 +60,6 @@ class Manager():
             text = text[:-2] + '\n'
             f.write(text)
         f.close()
+    
+    def save_model(self, episode, agent_dict):
+        torch.save(agent_dict, f'{self.model_save_path}episode-{episode}.pt')

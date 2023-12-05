@@ -49,6 +49,8 @@ class PPOTrainer(TrainerBase):
                         self.manager.save_image(episode, step+1, state[0])
                     if self.conf['action_logger']:
                         self.manager.save_action(episode, step+1, actions, action_probs, entropies, epi=False)
+                    # to save agent
+                    self.manager.save_model(episode, self.agent.state_dict())
                 if done : 
                     break
             ents = np.mean(ents, axis=0)
