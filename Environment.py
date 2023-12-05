@@ -63,7 +63,6 @@ class Env():
             permutation_vector : [0, n-1] 가 중복되지 않고 섞여있는 np.ndarray
         """
         permutation_vector = np.random.permutation(n)
-        permutation_vector = [item for item in permutation_vector for _ in range(10000)]
         return permutation_vector
 
     def _load_dataset(self) -> None:
