@@ -1,5 +1,6 @@
 from defense.DefenseBase import DefenseBase
 import numpy as np
+import random
 import cv2 as cv
 from preprocess.RotatePreprocess import RotatePreprocess
 from preprocess.BrightnessControlPreprocess import BrightnessControlPreprocess
@@ -73,7 +74,9 @@ class MultiAugmentationShortPolicy(nn.Module):
         index_out = self.index(x)
         return index_out
     
-    def get_actions(self, x, softmax_dim=0):
+    def get_actions(self, x, softmax_dim=0, rand=False):
+        if rand:
+            return (random.randint(0, 6), ), (0, ), (0, )
         index_out = x
 
         prob_index = F.softmax(index_out, dim=softmax_dim)

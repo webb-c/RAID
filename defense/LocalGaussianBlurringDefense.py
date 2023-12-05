@@ -1,5 +1,6 @@
 from defense.DefenseBase import DefenseBase
 import numpy as np
+import random
 import cv2 as cv
 
 import torch
@@ -23,7 +24,6 @@ class LocalGaussianBlurringDefense(DefenseBase):
             - std (float): defense perturbation의 standard deviation
         """
         channel, index, std = action
-
         y = index // self.config["image_height"]
         x = index % self.config["image_width"]
         kernel_radius = int(self.config["image_height"] * std) + 1
@@ -74,7 +74,9 @@ class LocalGaussianBlurringDefensePolicy(nn.Module):
 
         return (channel_out, index_out, noise_out)
     
-    def get_actions(self, x, softmax_dim=0):
+    def get_actions(self, x, softmax_dim=0, rand=False):
+        if rand :
+            return (random.randint(0, 2), random.randint(0, 1023), random.uniform(0, 0.25)), (0, 0, 0), (0, 0, 0)
         channel_out, index_out, noise_out = x
 
         prob_channel = F.softmax(channel_out, dim=softmax_dim)
@@ -98,6 +100,6 @@ class LocalGaussianBlurringDefensePolicy(nn.Module):
 
         a_noise = dist_noise.sample()
         log_prob_noise = dist_noise.log_prob(a_noise)
-        a_noise = torch.clamp(a_noise*0.25, 0, 0.25).int()
+        a_noise = torch.clamp(a_noise*0.25, 0, 0.25)
 
         return (a_channel, a_index, a_noise), (log_prob_channel, log_prob_index, log_prob_noise), (dist_channel.entropy(), dist_index.entropy(), dist_noise.entropy())

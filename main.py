@@ -17,7 +17,6 @@ from defense.ClipDefense import ClipDefense, ClipDefensePolicy
 
 from train_methods.PPOTrainer import PPOTrainer
 from train_methods.DQNTrainer import DQNTrainer
-
 from test_methods.tester import Tester
 
 import copy
@@ -39,7 +38,6 @@ def parse_opt(known=False):
     parser = argparse.ArgumentParser()
     
     parser.add_argument("-mode", "--mode", type=str, default="train", help="train / val / test")
-    parser.add_argument("-agentpath", "--agent_path", type=str, default=None, help="reinforcement learning agent weights path")
     parser.add_argument("-eps", "--max_ep_len", type=int, default=10, help="max timesteps in one episode")
     parser.add_argument("-lr", "--learning_rate", type=float, default=0.0003, help="learning rate")
     parser.add_argument("-g", "--gamma", type=float, default=0.9, help=" discount factor gamma")
@@ -69,6 +67,8 @@ def parse_opt(known=False):
 
     parser.add_argument("-learn", "--learn_method", type=str, default="PPO", help="RL training method")
     parser.add_argument("-defense", "--defense_method", type=str, default="MultiAugmentationDefense", help="image defense method")
+    
+    parser.add_argument("-rand", "--rand", type=str2bool, default=False, help="rand action for testing")
     
     return parser.parse_known_args()[0] if known else parser.parse_args()
 
@@ -118,23 +118,28 @@ def main(conf):
     
     # Train code
     if mode == "train" : 
-        trainer = get_instance(learn_dict[conf["learn_method"]][1], agent, env, conf, manager)
+        try :
+            trainer = get_instance(learn_dict[conf["learn_method"]][1], agent, env, conf, manager)
+        except ValueError as e:
+            print(e)
+        
         trainer.train()
             
         print("Train finish with,")
         prnt(conf)
         print("Start:\t", manager.get_time().strftime('%m-%d %H:%M:%S'))
         print("End:\t", datetime.now().strftime('%m-%d %H:%M:%S'))
-    
-    elif mode == "test":
-        tester = Tester(agent, env, conf, manager, agent_path=conf["agent_path"])
+
+    # Test code
+    if mode == "test" :
+        tester = Tester(agent, env, conf, manager)
+        
         tester.test()
         
         print("Test finish with,")
         prnt(conf)
         print("Start:\t", manager.get_time().strftime('%m-%d %H:%M:%S'))
         print("End:\t", datetime.now().strftime('%m-%d %H:%M:%S'))
-
 
 if __name__ == "__main__":
     warnings.filterwarnings('ignore', category=UserWarning)
