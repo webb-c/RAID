@@ -4,3 +4,5 @@ images/
 test.py
 logs/
 saved_images/*
+action_log/*
+*.pyc

@@ -1,6 +1,8 @@
 import cv2 as cv
 import numpy as np
 from PIL import Image
+import os
+
 import torch
 from torchvision.transforms import transforms
 
@@ -13,16 +15,18 @@ from defense.LocalGaussianBlurringDefense import LocalGaussianBlurringDefense as
 
 class Env():
     def __init__(self,
-                 args: dict = {'learning_rate': 0.0003, 'gamma': 0.9, 'lmbda': 0.9, 'alpha': 0.5, 'eps_clip': 0.2, 'num_epoch': 10, 'num_step': 50, 'rollout_len': 3, 'buffer_size': 10, 'minibatch_size': 32, 'mode': 'train', 'model_name': 'mobilenet', 'dataset_name': 'CIFAR10', 'layer_idx': 4},
+                 args: dict = {'learning_rate': 0.0003, 'gamma': 0.9, 'lmbda': 0.9, 'alpha': 0.5, 'mse_ratio': 0.0, 'eps_clip': 0.2, 'num_epoch': 10, 'num_step': 50, 'rollout_len': 3, 'buffer_size': 10, 'minibatch_size': 32, 'mode': 'train', 'model_name': 'mobilenet', 'dataset_name': 'CIFAR10', 'layer_idx': 4},
                  defense = LGB
                  ) -> None:
         
         self.state: list[np.ndarray] = None # current state [image, featuremap]
         self.target_label: int = None
+        self.adversarial_label: int = None
         self.target_image: np.ndarray = None
         self.episode: int = 0 # current episode (integer)
         self.prev_confidence_score: np.ndarray = None
         self.alpha: float = args["alpha"]
+        self.mse_ratio: float = args['mse_ratio']
         self.size: int = 32
         self.epoch: int = 1
         self.num_epoch = args['num_epoch']
@@ -62,6 +66,7 @@ class Env():
             permutation_vector : [0, n-1] 가 중복되지 않고 섞여있는 np.ndarray
         """
         permutation_vector = np.random.permutation(n)
+        # permutation_vector = [item for item in permutation_vector for _ in range(100)]
         return permutation_vector
 
     def _load_dataset(self) -> None:
@@ -78,16 +83,17 @@ class Env():
 
         original_images = original_images_paths
         perturbed_images = perturbed_images_paths
-        original_classes = [self._get_class(image_path) for image_path in original_images_paths]
+        original_classes = [self._get_original_class(os.path.basename(image_path)) for image_path in original_images_paths]
+        adversarial_classes = [self._get_adversarial_class(os.path.basename(image_path)) for image_path in perturbed_images_paths]
 
         if self.mode == "train":
-            self.train_dataset = {"original_images" : original_images, "perturbed_images" : perturbed_images, "original_classes" : original_classes, "num_images" : len(original_images)}
+            self.train_dataset = {"original_images" : original_images, "perturbed_images" : perturbed_images, "original_classes" : original_classes, "adversarial_classes" : adversarial_classes, "num_images" : len(original_images)}
 
         elif self.mode == "val":
-            self.val_dataset = {"original_images" : original_images, "perturbed_images" : perturbed_images, "original_classes" : original_classes, "num_images" : len(original_images)}
+            self.val_dataset = {"original_images" : original_images, "perturbed_images" : perturbed_images, "original_classes" : original_classes, "adversarial_classes" : adversarial_classes, "num_images" : len(original_images)}
 
         elif self.mode == "test":
-            self.test_dataset = {"original_images" : original_images, "perturbed_images" : perturbed_images, "original_classes" : original_classes, "num_images" : len(original_images)}
+            self.test_dataset = {"original_images" : original_images, "perturbed_images" : perturbed_images, "original_classes" : original_classes, "adversarial_classes" : adversarial_classes, "num_images" : len(original_images)}
 
 
     def _set_dataset(self) -> None:
@@ -102,14 +108,16 @@ class Env():
             dataset = self.test_dataset
 
         data_num = dataset["num_images"]
+        data_num = 1000
 
-        permutation_list = self._get_permutation_list(n = data_num)
+        permutation_list = self._get_permutation_list(n = 1000)
         
         original_images = (self._get_transform_image(dataset["original_images"][index]) for index in permutation_list)
         perturbed_images = (self._get_transform_image(dataset["perturbed_images"][index]) for index in permutation_list)
         original_classes = (dataset["original_classes"][index] for index in permutation_list)
+        adversarial_classes = (dataset["adversarial_classes"][index] for index in permutation_list)
 
-        self.dataset = {"original_images" : original_images, "perturbed_images" : perturbed_images, "original_classes" : original_classes}
+        self.dataset = {"original_images" : original_images, "perturbed_images" : perturbed_images, "original_classes" : original_classes, "adversarial_classes" : adversarial_classes}
 
         if len(permutation_list) > 0:
             print(f"Current mode : {self.mode}")
@@ -122,7 +130,10 @@ class Env():
         with Image.open(image_path) as img:
             return self.transform(img)
         
-    def _get_class(self, image_name: str) -> int:
+    def _get_original_class(self, image_name: str) -> int:
+        return int(image_name.split("_")[1].split(".")[0])
+    
+    def _get_adversarial_class(self, image_name: str) -> int:
         return int(image_name.split("_")[2].split(".")[0])
         
     def _load_model(self) -> torch.nn.Module:
@@ -140,22 +151,24 @@ class Env():
 
         input:
             없음
-        output:
+        output
             (origin_image_tensor, perturbed_image_tensor, image_label)
         """
             
         original_images = self.dataset["original_images"]
         perturbed_images = self.dataset["perturbed_images"]
         original_classes = self.dataset["original_classes"]
+        adversarial_classes = self.dataset["adversarial_classes"]
 
         origin_image = next(original_images, None)
         perturbed_image = next(perturbed_images, None)
         original_class = next(original_classes, None)
+        adversarial_class = next(adversarial_classes, None)
 
         if origin_image is None and perturbed_image is None and original_class is None:
             return -1
         
-        return (origin_image, perturbed_image, original_class)
+        return (origin_image, perturbed_image, original_class, adversarial_class)
         
     
 
@@ -186,21 +199,44 @@ class Env():
         new_image = self.defense.apply(self.state[0], action)
         self.state[0] = new_image
         
-    def _get_reward(self, confidence_score: np.ndarray) -> float:
+    def _get_reward(self, new_confidence_score):
         """
-        _get_reward 함수는 이미지 모델의 추론에 대한 confidence drift의 정도를 반환합니다.
+        Calculate the reward for the agent's action.
 
-        input:
-            - confidence_score (np.ndarray): 갱신된 confidence_score
-        output:
-            - reward (float): action을 수행했을 때의 reward를 반환합니다. Reward는 image model의 confidence drift입니다.
+        Parameters:
+        new_confidence_score (np.ndarray): The confidence scores for the perturbed image after the agent's action.
+        target_label (int): The label that the adversarial image is trying to imitate.
+        true_label (int): The true label of the image.
+
+        Returns:
+        float: The calculated reward.
         """
-        confidence_score = confidence_score.T
-        prev_confidence_score = self.prev_confidence_score.T
-        target_drift = confidence_score[self.target_label] - prev_confidence_score[self.target_label]
-        result = self.alpha * target_drift
+        # 보상 계산을 위한 하이퍼파라미터
+        alpha = self.alpha  # 목표 클래스에 대한 확신 감소에 대한 보상 가중치
+        beta = 1 - alpha   # 올바른 클래스에 대한 확신 증가에 대한 보상 가중치
+        termination_reward = 1  # 성공적 종료에 대한 추가 보상
+        misclassification_penalty = -0.5  # 잘못 분류에 대한 패널티
 
-        return result
+        # 목표 클래스에 대한 확신이 감소하면 보상
+        adversarial_confidence_decrease = self.prev_confidence_score.T[self.adversarial_label] - new_confidence_score.T[self.adversarial_label]
+        
+        # 올바른 클래스에 대한 확신이 증가하면 보상
+        true_confidence_increase = new_confidence_score.T[self.target_label] - self.prev_confidence_score.T[self.target_label]
+        
+        # 보상 계산
+        reward = (alpha * adversarial_confidence_decrease) + (beta * true_confidence_increase)
+        
+        # 종료 조건에 따른 추가 보상 또는 패널티
+        if np.argmax(new_confidence_score.T) == self.target_label:
+            if new_confidence_score.T[self.target_label] > 0.5:
+                reward += termination_reward  # 성공적 종료
+            else:
+                reward += misclassification_penalty  # 올바른 클래스지만 확신도가 낮음
+
+        reward += 0.5 * np.sum(np.abs(new_confidence_score - self.prev_confidence_score))
+
+        
+        return reward
                 
 
     def train(self) -> None:
@@ -241,9 +277,9 @@ class Env():
         self.epoch = 0
         if next == -1:
             self._set_dataset()
-            origin_image_tensor, perturbed_image_tensor, image_label = self._get_next_image_label()
+            origin_image_tensor, perturbed_image_tensor, image_label, adversarial_label = self._get_next_image_label()
         else:
-            origin_image_tensor, perturbed_image_tensor, image_label = next
+            origin_image_tensor, perturbed_image_tensor, image_label, adversarial_label = next
 
         self.state = [np.array(perturbed_image_tensor), None]
         confidence_score, feature_map = self._inference()
@@ -251,6 +287,7 @@ class Env():
         self.episode += 1
         self.target_image = np.array(origin_image_tensor)
         self.target_label = image_label
+        self.adversarial_label = adversarial_label
         self.state = [np.array(perturbed_image_tensor), np.array(feature_map)]
 
         self.prev_confidence_score = confidence_score
@@ -288,12 +325,10 @@ class Env():
         reward = self._get_reward(confidence_score)
 
        # Terminate condition
-        if np.argmax(confidence_score) == self.target_label:
+        if np.argmax(confidence_score) == self.target_label and confidence_score.T[self.target_label] > 0.5:
             terminated = True
-            reward += confidence_score.T[self.target_label]
         elif self.epoch >= self.num_epoch:
             truncated = True
-            reward += np.array([-1])
             
 
         # Update attributes

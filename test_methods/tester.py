@@ -1,26 +1,24 @@
-from train_methods.TrainerBase import TrainerBase
-import torch
-import torch.nn as nn
+from torch import nn
 from tqdm import tqdm
 import numpy as np
 
-class PPOTrainer(TrainerBase):
+from teset_methods.TesterBase import TesterBase
 
+class Tester(TesterBase):
     def __init__(self, agent: nn.Module, env, conf, manager, agent_path = None) -> None:
-        super(PPOTrainer, self).__init__(agent, env, conf, manager, agent_path)
+        super(Tester, self).__init__(agent, env, conf, manager, agent_path)
 
-    def train(self):
+    def test(self):
         # Hyper-parameter
         num_episode = self.conf["num_episode"]
         num_step = self.conf["num_step"] 
         mode = self.conf["mode"]
         print_interval = 100
-        save_interval = 2000
+        save_interval = 100
 
         self.env.train()
         
         # Train code
-
         total_reward = 0
         
         for episode in tqdm(range(num_episode)):
@@ -38,6 +36,7 @@ class PPOTrainer(TrainerBase):
                 ents.append(np.array(entropies))
                 
                 state_prime, reward, terminated, truncated, info = self.env.step(actions)
+                # TODO terminated 정하기
                 if terminated or truncated :
                     done = True
                 self.agent.put_data((state, actions, reward, state_prime, action_probs, done))
@@ -55,6 +54,7 @@ class PPOTrainer(TrainerBase):
             for idx, ent in enumerate(ents):
                 self.manager.record(f'{mode}/entropy/action{idx}', ent, episode)
             total_reward += epi_reward
+
             # record total_reward & avg_reward & loss for each episode
             self.manager.record(mode+"/total_reward", epi_reward, episode)
             self.manager.record(mode+"/avg_reward", (epi_reward/(step+1)), episode)
@@ -68,9 +68,3 @@ class PPOTrainer(TrainerBase):
             if episode % print_interval == 0 and step != 0:
                 print("\n# of episode :{}, avg reward : {:.2f}, total reward : {:.2f}".format(episode, total_reward/print_interval, total_reward))
                 total_reward = 0
-
-    def eval(self):
-        pass
-
-    def test(self):
-        pass
