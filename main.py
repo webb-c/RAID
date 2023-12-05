@@ -38,11 +38,11 @@ def parse_opt(known=False):
     parser = argparse.ArgumentParser()
     
     parser.add_argument("-mode", "--mode", type=str, default="train", help="train / val / test")
-    parser.add_argument("-eps", "--max_ep_len", type=int, default=10, help="max timesteps in one episode")
+    parser.add_argument("-eps", "--max_ep_len", type=int, default=15, help="max timesteps in one episode")
     parser.add_argument("-lr", "--learning_rate", type=float, default=0.001, help="learning rate")
     parser.add_argument("-g", "--gamma", type=float, default=0.9, help=" discount factor gamma")
     parser.add_argument("-lmbda", "--lmbda", type=float, default=0.9, help="hyperparameter lambda for cal GAE")
-    parser.add_argument("-clip", "--eps_clip", type=float, default=0.2, help="clip parameter for PPO")
+    parser.add_argument("-clip", "--eps_clip", type=float, default=0.15, help="clip parameter for PPO")
     
     parser.add_argument("-episode", "--num_episode", type=int, default=300000, help="number of train episode")
     parser.add_argument("-epoch", "--num_epoch", type=int, default=15, help="number of maximum action")
