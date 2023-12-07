@@ -9,9 +9,9 @@ from Environment import Env
 from Manager import Manager
 from datetime import datetime
 
-# from defense.LocalGaussianBlurringDefense import LocalGaussianBlurringDefense, LocalGaussianBlurringDefensePolicy
-# from defense.MultiAugmentationDefense import MultiAugmentation, MultiAugmentationPolicy
-# from defense.MultiAugmentationDefenseShort import MultiAugmentationShort, MultiAugmentationShortPolicy
+from defense.LocalGaussianBlurringDefense import LocalGaussianBlurringDefense, LocalGaussianBlurringDefensePolicy
+from defense.MultiAugmentationDefense import MultiAugmentation, MultiAugmentationPolicy
+from defense.MultiAugmentationDefenseShort import MultiAugmentationShort, MultiAugmentationShortPolicy
 from defense.HighFrequencyDropDefense import HighFrequencyDrop, HighFrequencyDropPolicy
 from defense.ClipDefense import ClipDefense, ClipDefensePolicy
 

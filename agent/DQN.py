@@ -204,7 +204,7 @@ class DQN(nn.Module):
         q_table = self.get_q_table(state, train=train)
         coin = random.random()
         if coin < self.epsilon or rand:
-            return (random.randint(0, q_table.shape[0]), )
+            return (random.randint(0, q_table.shape[0]-1), )
         else : 
             return (q_table.argmax().item(), )
 
@@ -239,7 +239,10 @@ class DQN(nn.Module):
                 
                 a = a.to(self.available_device).long().view(-1, 1)
                 r = r.to(self.available_device).view(-1, 1)
+                # a = a.long().view(-1, 1)
+                # r = r.view(-1, 1)
                 done_mask = done_mask.to(self.available_device).view(-1, 1)
+                # done_mask = done_mask.view(-1, 1)
 
                 q_out = self.get_q_table(s, train=True)
                 q_a = torch.gather(q_out, 1, a)

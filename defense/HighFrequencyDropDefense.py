@@ -40,7 +40,7 @@ class HighFrequencyDropPolicy(nn.Module):
             nn.ReLU(),
             nn.Linear(64, 64),
             nn.ReLU(),
-            nn.Linear(64, 7),   # [0, 7]
+            nn.Linear(64, 8),   # [0, 7]
         )
         self.action_num = 1
 
