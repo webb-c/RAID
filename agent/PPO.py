@@ -18,30 +18,32 @@ class RolloutBuffer:
     def _make_batch(self):
         """ object : buffer에 저장된 buffer_size * minibatch_size개의 데이터를 buffer_size개의 minibatch가 담긴 데이터로 전환하여 저장합니다."""
         self.batch_data = []
-        for i in range(self.buffer_size):
-            a_batch, r_batch, prob_a_batch, done_batch = [], [], [], []
-            img_batch, feat_batch, img_prime_batch, feat_prime_batch = [], [], [], []
-            for j in range(self.minibatch_size):
-                transition = self.buffer.pop()
-                s, a, r, s_prime, prob_a, done = transition
-                img_batch.append(s[0])
-                feat_batch.append(s[1])
-                a_batch.append(a)
-                r_batch.append([r])
-                img_prime_batch.append(s_prime[0])
-                feat_prime_batch.append(s_prime[1])
-                prob_a_batch.append(prob_a)
-                done_mask = 0 if done else 1
-                done_batch.append(done_mask)
-            
-            img_batch = torch.squeeze(torch.tensor(img_batch), 1)
-            feat_batch = torch.squeeze(torch.tensor(feat_batch), 1)
-            img_prime_batch = torch.squeeze(torch.tensor(img_prime_batch), 1)
-            feat_prime_batch = torch.squeeze(torch.tensor(feat_prime_batch), 1)
-            mini_batch = [img_batch, feat_batch],  torch.tensor(a_batch, dtype=torch.float), torch.tensor(r_batch, dtype=torch.float), \
-                [img_batch, feat_batch], torch.tensor(done_batch, dtype=torch.float), torch.tensor(prob_a_batch, dtype=torch.float)
+        # for i in range(self.buffer_size):
+        a_batch, r_batch, prob_a_batch, done_batch = [], [], [], []
+        img_batch, feat_batch, img_prime_batch, feat_prime_batch = [], [], [], []
+        # pop은 뒤에서 부터 데이터를 뽑는다는 사실...
+        for transition in self.buffer:
+            # transition = self.buffer.pop(0)
+            s, a, r, s_prime, prob_a, done = transition
+            img_batch.append(s[0])
+            feat_batch.append(s[1])
+            a_batch.append(a)
+            r_batch.append([r])
+            img_prime_batch.append(s_prime[0])
+            feat_prime_batch.append(s_prime[1])
+            prob_a_batch.append(prob_a)
+            done_mask = 0 if done else 1
+            done_batch.append(done_mask)
+        
+        img_batch = torch.squeeze(torch.tensor(img_batch), 1)
+        feat_batch = torch.squeeze(torch.tensor(feat_batch), 1)
+        img_prime_batch = torch.squeeze(torch.tensor(img_prime_batch), 1)
+        feat_prime_batch = torch.squeeze(torch.tensor(feat_prime_batch), 1)
+        mini_batch = [img_batch, feat_batch],  torch.tensor(a_batch, dtype=torch.float), torch.tensor(r_batch, dtype=torch.float), \
+            [img_prime_batch, feat_prime_batch], torch.tensor(done_batch, dtype=torch.float), torch.tensor(prob_a_batch, dtype=torch.float)
 
-            self.batch_data.append(mini_batch)
+        self.clear()
+        self.batch_data.append(mini_batch)
     
     
     def clear(self):
@@ -149,7 +151,9 @@ class PPO(nn.Module):
     def _backbone(self, img, feature):
         """ object: img를 part1에 통과시키고, 그 결과를 feature와 addition한 뒤 part2에 통과시켜 얻은 최종 feature를 반환합니다."""
         mid_feature = self.backbone_part1(img)
-        agent_feature = self.backbone_part2(mid_feature + feature)
+        concat = torch.cat([mid_feature, feature], dim=2)
+        agent_feature = self.backbone_part2(concat)
+        agent_feature = F.adaptive_avg_pool2d(agent_feature, (1, 1))
         agent_feature = torch.squeeze(agent_feature)
         
         return agent_feature
@@ -261,7 +265,8 @@ class PPO(nn.Module):
         loss = None
         v_loss_list = []
         policy_loss_list = []
-        if self.buffer.is_full() :
+        # if self.buffer.is_full() :
+        if True:
             self = self.to(self.available_device)
             data = self.buffer.get_batch()
             data = self._calc_advantage(data)
