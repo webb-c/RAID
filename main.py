@@ -14,6 +14,7 @@ from defense.MultiAugmentationDefense import MultiAugmentation, MultiAugmentatio
 from defense.MultiAugmentationDefenseShort import MultiAugmentationShort, MultiAugmentationShortPolicy
 from defense.HighFrequencyDropDefense import HighFrequencyDrop, HighFrequencyDropPolicy
 from defense.ClipDefense import ClipDefense, ClipDefensePolicy
+from defense.BitplaneSlicingDefense import BitplaneSlicingDefense, BitplaneSlicingDefensePolicy
 
 from train_methods.PPOTrainer import PPOTrainer
 from train_methods.DQNTrainer import DQNTrainer
@@ -99,6 +100,7 @@ def main(conf):
         MultiAugmentationDefenseShort=["MultiAugmentationShort", "MultiAugmentationShortPolicy"],
         HighFrequencyDropDefense=["HighFrequencyDrop", "HighFrequencyDropPolicy"],
         ClipDefense=['ClipDefense', 'ClipDefensePolicy'],
+        BitplaneSlicingDefense=['BitplaneSlicingDefense', 'BitplaneSlicingDefensePolicy']
     )
     learn_dict = dict(
         PPO=["PPO", "PPOTrainer"],

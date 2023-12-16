@@ -79,7 +79,7 @@ class LocalGaussianBlurringDefensePolicy(nn.Module):
             return (random.randint(0, 2), random.randint(0, 1023), random.uniform(0, 0.25)), (0, 0, 0), (0, 0, 0)
         channel_out, index_out, noise_out = x
 
-        prob_channel = F.softmax(channel_out, dim=softmax_dim)
+        prob_channel = F.softmax(channel_out, dim=softmax_dim) + 1e-05
         dist_channel = Categorical(prob_channel)
 
         mu_index = torch.sigmoid(index_out[0])
