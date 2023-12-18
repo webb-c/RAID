@@ -1,5 +1,5 @@
 import random
-
+import torch
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
@@ -18,16 +18,20 @@ class BitplaneSlicingDefense(DefenseBase):
         BitplaneSlicingDefense는 주어진 target bit의 값을 0으로 변환합니다.
 
         input:
-            - image (np.ndarray) : 전처리할 이미지
+            - image (np.ndarray) : 전처리할 이미지z
             - action (tuple) : 적용할 target bit
         """
-        index = action[0].item()
+        # action = action[0].item()
+        if isinstance(action[0], torch.Tensor):
+            action =  action[0].item()
+        else:
+            action = action[0]
 
         # Denormalize
         image = (255 * image).astype(np.uint8)
 
         # Apply bitwise slicing calculation
-        image = np.bitwise_and(image, ~(1 << index))
+        image = np.bitwise_and(image, ~(1 << action))
 
         # Normalize
         image = image.astype(np.float32) / 255
