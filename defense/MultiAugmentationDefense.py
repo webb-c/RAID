@@ -37,29 +37,28 @@ class MultiAugmentation(DefenseBase):
         """
         preprocessing_index, = action
 
-        match preprocessing_index:
-            case 0:
-                preprocessed_image = self.rotate_preprocess.process(image, 3)
-            case 1:
-                preprocessed_image = self.rotate_preprocess.process(image, -3)
-            case 2:
-                preprocessed_image = self.brightness_control_preprocess.process(image, 0.05)
-            case 3:
-                preprocessed_image = self.brightness_control_preprocess.process(image, -0.05)
-            case 4:
-                preprocessed_image = self.vertical_flip_preprocess.process(image)
-            case 5:
-                preprocessed_image = self.horizontal_flip_preprocess.process(image)
-            case 6:
-                preprocessed_image = self.vertical_shift_preprocess.process(image, 0.05)
-            case 7:
-                preprocessed_image = self.vertical_shift_preprocess.process(image, -0.05)
-            case 8:
-                preprocessed_image = self.horizontal_shift_preprocess.process(image, 0.05)
-            case 9:
-                preprocessed_image = self.horizontal_shift_preprocess.process(image, -0.05)
-            case 10:
-                preprocessed_image = self.resize_preprocess.process(image, 0.97)
+        if preprocessing_index == 0:
+            preprocessed_image = self.rotate_preprocess.process(image, 3)
+        elif preprocessing_index == 1:
+            preprocessed_image = self.rotate_preprocess.process(image, -3)
+        elif preprocessing_index == 2:
+            preprocessed_image = self.brightness_control_preprocess.process(image, 0.05)
+        elif preprocessing_index == 3:
+            preprocessed_image = self.brightness_control_preprocess.process(image, -0.05)
+        elif preprocessing_index == 4:
+            preprocessed_image = self.vertical_flip_preprocess.process(image)
+        elif preprocessing_index == 5:
+            preprocessed_image = self.horizontal_flip_preprocess.process(image)
+        elif preprocessing_index == 6:
+            preprocessed_image = self.vertical_shift_preprocess.process(image, 0.05)
+        elif preprocessing_index == 7:
+            preprocessed_image = self.vertical_shift_preprocess.process(image, -0.05)
+        elif preprocessing_index == 8:
+            preprocessed_image = self.horizontal_shift_preprocess.process(image, 0.05)
+        elif preprocessing_index == 9:
+            preprocessed_image = self.horizontal_shift_preprocess.process(image, -0.05)
+        elif preprocessing_index == 10:
+            preprocessed_image = self.resize_preprocess.process(image, 0.97)
         return preprocessed_image
 
 

@@ -35,21 +35,20 @@ class MultiAugmentationShort(DefenseBase):
 
         preprocessing_index, = action
 
-        match preprocessing_index:
-            case 0:
-                preprocessed_image = self.rotate_preprocess.process(image, 5)
-            case 1:
-                preprocessed_image = self.rotate_preprocess.process(image, -5)
-            case 2:
-                preprocessed_image = self.vertical_shift_preprocess.process(image, 0.05)
-            case 3:
-                preprocessed_image = self.vertical_shift_preprocess.process(image, -0.05)
-            case 4:
-                preprocessed_image = self.horizontal_shift_preprocess.process(image, 0.05)
-            case 5:
-                preprocessed_image = self.horizontal_shift_preprocess.process(image, -0.05)
-            case 6:
-                preprocessed_image = self.resize_preprocess.process(image, 0.95)
+        if preprocessing_index == 0:
+            preprocessed_image = self.rotate_preprocess.process(image, 5)
+        elif preprocessing_index == 1:
+            preprocessed_image = self.rotate_preprocess.process(image, -5)
+        elif preprocessing_index == 2:
+            preprocessed_image = self.vertical_shift_preprocess.process(image, 0.05)
+        elif preprocessing_index == 3:
+            preprocessed_image = self.vertical_shift_preprocess.process(image, -0.05)
+        elif preprocessing_index == 4:
+            preprocessed_image = self.horizontal_shift_preprocess.process(image, 0.05)
+        elif preprocessing_index == 5:
+            preprocessed_image = self.horizontal_shift_preprocess.process(image, -0.05)
+        elif preprocessing_index == 6:
+            preprocessed_image = self.resize_preprocess.process(image, 0.95)
 
 
         return preprocessed_image
